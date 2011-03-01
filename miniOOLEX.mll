@@ -24,6 +24,7 @@
 
 {
 open miniOOYACC;;
+exception Eof;;
 } 
 rule token = parse
   [' ' '\t' '\n']  { token lexbuf } (* skip blanks and tabs *)

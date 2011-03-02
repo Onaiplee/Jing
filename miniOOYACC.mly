@@ -10,9 +10,8 @@
 %token < int > NUM
 %token < stirng > ID
 %type <unit> cmd expr bool
-%left MINUS 
-%left EQ LT
-%nonassoc PERIOD 
+%right MINUS 
+%left PERIOD
 %start cmd
 
 %% 
@@ -33,8 +32,8 @@ cmd :
 expr :
   ID                                  { () }
 | NUM                                 { () }
-| expr MINUS expr                     { () }
 | NULL                                { () }
+| expr MINUS expr                     { () }
 | expr PERIOD expr                    { () }
 | PROC ID COLON cmd                   { () }
 

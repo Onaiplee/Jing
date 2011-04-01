@@ -2,45 +2,55 @@
 
 %{
 
+
+
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD
-%token LPAREN RPAREN NULL TRUE FALSE VAR MALLOC PROC SKIP
+%token LPAREN RPAREN NULL TRUE FALSE VARIABLE MALLOC PROC SKIP EOL
 %token WHILE IF ELSE PARAL ATOM
 %token < int > NUM
-%token < stirng > ID
-%type <unit> cmd expr bool
-%right MINUS 
+%token < string > VAR FIELD
+%type <unit> prog
+%type <acmd> cmd 
+%type <aexpr> expr
+%type <abool> bool
+%left ASSIGN
+%left MINUS 
 %left PERIOD
-%start cmd
+%start prog
 
-%% 
+%%
+
+prog:
+  cmd EOL                             { () } 
 
 cmd :
-  VAR ID SEMICOLON cmd                { () }
-| expr LPAREN expr RPAREN             { () }
-| MALLOC LPAREN ID RPAREN             { () }
-| ID ASSIGN expr                      { () }
-| expr PERIOD expr ASSIGN expr        { () }
-| SKIP                                { () }
-| LCURLYB cmd SEMICOLON cmd RCURLYB   { () }
-| WHILE bool cmd                      { () }
-| IF bool cmd ELSE cmd                { () }
-| LCURLYB cmd PARAL cmd RCURLYB       { () }
-| ATOM LPAREN cmd RPAREN              { () }
+  VARIABLE VAR SEMICOLON cmd          { Decl($2, $4) }
+| expr LPAREN expr RPAREN             { Rpc($1, $3) }
+| MALLOC LPAREN VAR RPAREN            { Doa($3) }
+| VAR ASSIGN expr                     { Vass($1, $3) }
+| expr PERIOD expr ASSIGN expr        { Fass($1, $3, $5) }
+| SKIP                                { Skip }
+| LCURLYB cmd SEMICOLON cmd RCURLYB   { Sq($2, $4) }
+| WHILE bool cmd                      { While($2, $3) }
+| IF bool cmd ELSE cmd                { If($2, $3, $5) }
+| LCURLYB cmd PARAL cmd RCURLYB       { Para($2, $4) }
+| ATOM LPAREN cmd RPAREN              { Atom($3) }
 
 expr :
-  ID                                  { () }
-| NUM                                 { () }
-| NULL                                { () }
-| expr MINUS expr                     { () }
-| expr PERIOD expr                    { () }
-| PROC ID COLON cmd                   { () }
+  FIELD                               { Field($1) }
+| VAR                                 { Var($1) }
+| NUM                                 { Num($1) }
+| NULL                                { Null }
+| expr MINUS expr                     { Minus($1, $3) }
+| expr PERIOD expr                    { Floc($1, $3) }
+| PROC VAR COLON cmd                   { Proc($2, $4) }
 
 bool :
-  TRUE                                { () }
-| FALSE                               { () }
-| expr EQ expr                        { () }
-| expr LT expr                        { () }
+  TRUE                                { True }
+| FALSE                               { False }
+| expr EQ expr                        { Equal($1, $3) }
+| expr LT expr                        { LessThan($1, $3) }
 
 %% 

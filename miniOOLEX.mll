@@ -23,13 +23,15 @@
 
 
 {
-open miniOOYACC;;
+open MiniOOYACC;;
 exception Eof;;
 } 
 rule token = parse
-  [' ' '\t' '\n']  { token lexbuf } (* skip blanks and tabs *)
-| ['a'-'z'] as idt { ID idt       } (* idt can be var or f depends on syntax *)
-| '1'              { Int 1        } 
+  [' ' '\t' ]      { token lexbuf } (* skip blanks and tabs *)
+| ['\n' ]          { EOL          }
+| ['a'-'z' ] as f  { FIELD (Char.escaped f) }
+| ['A'-'Z' ] as x  { VAR (Char.escaped x) }
+| '1'              { NUM 1        } 
 | "=="             { EQ           }
 | ':'              { COLON        }
 | '<'              { LT           }
@@ -44,7 +46,7 @@ rule token = parse
 | "null"           { NULL         }
 | "true"           { TRUE         }
 | "false"          { FALSE        }
-| "var"            { VAR          }
+| "var"            { VARIABLE     }
 | "malloc"         { MALLOC       }
 | "proc"           { PROC         }
 | "skip"           { SKIP         }

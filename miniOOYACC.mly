@@ -2,6 +2,59 @@
 
 %{
 
+type 'a option =
+    Some of 'a
+  | Nothing
+  ;;
+
+type expression =
+    Field
+  | Var
+  | Num
+  | Null
+  | Minux
+  | Floc
+  | Proc
+  ;;
+
+type command =
+  | Decl
+  | Rpc
+  | Doa
+  | Vass
+  | Fass
+  | Skip
+  | Sq
+  | While
+  | If
+  | Para
+  | Atom
+  ;;
+
+type abool =
+    True
+  | False
+  | Eq
+  | LT
+  ;;
+
+type node_attr =
+    { Error : bool option;
+      Var_decl : bool option
+    } ;;
+
+
+type abstract_node =
+    ExpressionNode of expression * node_attr * abstract_node list
+  | CommandNode of command * node_attr * abstract_node list
+  | BoolNode of abool * node_attr * abstract_node list option
+  | Variable of string
+  | Field of string
+  | Number of int
+  | Null
+  ;;
+
+
 
 
 %}
@@ -26,31 +79,31 @@ prog:
   cmd EOL                             { () } 
 
 cmd :
-  VARIABLE VAR SEMICOLON cmd          { Decl($2, $4) }
-| expr LPAREN expr RPAREN             { Rpc($1, $3) }
-| MALLOC LPAREN VAR RPAREN            { Doa($3) }
-| VAR ASSIGN expr                     { Vass($1, $3) }
-| expr PERIOD expr ASSIGN expr        { Fass($1, $3, $5) }
-| SKIP                                { Skip }
-| LCURLYB cmd SEMICOLON cmd RCURLYB   { Sq($2, $4) }
-| WHILE bool cmd                      { While($2, $3) }
-| IF bool cmd ELSE cmd                { If($2, $3, $5) }
-| LCURLYB cmd PARAL cmd RCURLYB       { Para($2, $4) }
-| ATOM LPAREN cmd RPAREN              { Atom($3) }
+  VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl, Null, [(Variable $2); $4])  }
+| expr LPAREN expr RPAREN             { CommandNode(Rpc, Null, [$1; $3] }
+| MALLOC LPAREN VAR RPAREN            { CommandNode(Doa, Null, [(Variable $3)] }
+| VAR ASSIGN expr                     { CommandNode(Vass, [(Variable $1), $3]) }
+| expr PERIOD expr ASSIGN expr        { CommandNode(Fass, [$1; $3; $5] ) }
+| SKIP                                { CommandNode(Skip, Null, []) }
+| LCURLYB cmd SEMICOLON cmd RCURLYB   { CommandNode(Sq, [$2; $4]) }
+| WHILE bool cmd                      { CommandNode(While, [$2; $3]) }
+| IF bool cmd ELSE cmd                { CommandNode(If, [$2; $3; $5]) }
+| LCURLYB cmd PARAL cmd RCURLYB       { CommandNode(Para, [$2; $4] }
+| ATOM LPAREN cmd RPAREN              { CommandNode(Atom, [$3]) }
 
 expr :
   FIELD                               { Field($1) }
-| VAR                                 { Var($1) }
+| VAR                                 { Variable($1) }
 | NUM                                 { Num($1) }
-| NULL                                { Null }
-| expr MINUS expr                     { Minus($1, $3) }
-| expr PERIOD expr                    { Floc($1, $3) }
-| PROC VAR COLON cmd                   { Proc($2, $4) }
+| NULL                                { ExpressionNode(Null, Null, []) }
+| expr MINUS expr                     { ExpressionNode(Minus, Null, [$1; $3]) }
+| expr PERIOD expr                    { ExpressionNode(Floc, Null, [$1; $3]) }
+| PROC VAR COLON cmd                  { ExpressionNode(Proc, Null, [(Var $2); $4]) }
 
 bool :
-  TRUE                                { True }
-| FALSE                               { False }
-| expr EQ expr                        { Equal($1, $3) }
-| expr LT expr                        { LessThan($1, $3) }
+  TRUE                                { BoolNode(True, Null, Nothing) }
+| FALSE                               { BoolNode(False, Null, Nothing) }
+| expr EQ expr                        { BoolNode(Equal, Null, Some ([$1; $3])) }
+| expr LT expr                        { BoolNode(LT, Null, Some [$1; $3]) }
 
 %% 

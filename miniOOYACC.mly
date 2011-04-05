@@ -70,6 +70,31 @@ let null_attr =
     vattr = Nothing
   } ;;
 
+let print_spec = function
+    Decl  -> print_string "Declaration "
+  | Rpc   -> print_string "RecursivePC "
+  | Doa   -> print_string "DynamicAlloc"
+  | Vass  -> print_string "VarAssign   "
+  | Fass  -> print_string "FieldAssign "
+  | Skip  -> print_string "skip        "
+  | Sq    -> print_string "Sequence    "
+  | While -> print_string "While       "
+  | If    -> print_string "If          "
+  | Para  -> print_string "Parallel    "
+  | Atom  -> print_string "AtomAction  "
+  ;;
+
+let rec print_tree = function
+    [] -> ()
+  | h::t -> 
+      match h with 
+        CommandNode(spec, _, Some list) ->
+          print_spec spec;
+          print_tree list
+      | 
+      
+    
+
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN

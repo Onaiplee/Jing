@@ -91,6 +91,9 @@ let rec print_tree = function
         CommandNode(spec, _, Some list) ->
           print_spec spec;
           print_tree list
+      | ExpressionNode(spec, _, Some list) ->
+          print_spec spec;
+          print_tree list
       | 
       
     

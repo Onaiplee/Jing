@@ -27,7 +27,7 @@ open MiniOOYACC;;
 exception Eof;;
 } 
 rule token = parse
-  [' ' '\t' ]      { token lexbuf } (* skip blanks and tabs *)
+  [' ' '\t']      { token lexbuf } (* skip blanks and tabs *)
 | ['\n' ]          { EOL          }
 | ['a'-'z' ] as f  { FIELD (Char.escaped f) }
 | ['A'-'Z' ] as x  { VAR (Char.escaped x) }
@@ -43,6 +43,7 @@ rule token = parse
 | '.'              { PERIOD       }
 | '('              { LPAREN       }
 | ')'              { RPAREN       }
+| "then"           { THEN         }
 | "null"           { NULL         }
 | "true"           { TRUE         }
 | "false"          { FALSE        }

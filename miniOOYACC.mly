@@ -12,7 +12,7 @@ type expression =
   | Var
   | Num
   | Null
-  | Minux
+  | Minus
   | Floc
   | Proc
   ;;
@@ -35,39 +35,52 @@ type abool =
     True
   | False
   | Eq
-  | LT
+  | Lt
   ;;
 
 type node_attr =
-    { Error : bool option;
-      Var_decl : bool option
+    { mutable eattr : bool option;
+      mutable vattr : bool option
     } ;;
 
 
 type abstract_node =
-    ExpressionNode of expression * node_attr * abstract_node list
-  | CommandNode of command * node_attr * abstract_node list
+    ExpressionNode of expression * node_attr * abstract_node list option
+  | CommandNode of command * node_attr * abstract_node list option
   | BoolNode of abool * node_attr * abstract_node list option
-  | Variable of string
-  | Field of string
-  | Number of int
-  | Null
+  | Variable of string * node_attr
+  | Field of string * node_attr
+  | Number of int * node_attr
+  | Null of node_attr
   ;;
 
+let get_eattr e =
+  match e with
+    ExpressionNode (_, attr, _) -> attr.eattr
+  | CommandNode    (_, attr, _) -> attr.eattr
+  | BoolNode       (_, attr, _) -> attr.eattr
+  | Variable       (_, attr   ) -> attr.eattr
+  | Field          (_, attr   ) -> attr.eattr
+  | Number         (_, attr   ) -> attr.eattr
+  | Null           (attr      ) -> attr.eattr
+  ;;
 
-
+let null_attr = 
+  { eattr = Nothing;
+    vattr = Nothing
+  } ;;
 
 %}
 
-%token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD
+%token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN
 %token LPAREN RPAREN NULL TRUE FALSE VARIABLE MALLOC PROC SKIP EOL
 %token WHILE IF ELSE PARAL ATOM
 %token < int > NUM
 %token < string > VAR FIELD
 %type <unit> prog
-%type <acmd> cmd 
-%type <aexpr> expr
-%type <abool> bool
+%type <abstract_node> cmd 
+%type <abstract_node> expr
+%type <abstract_node> bool
 %left ASSIGN
 %left MINUS 
 %left PERIOD
@@ -75,35 +88,35 @@ type abstract_node =
 
 %%
 
-prog:
+prog :
   cmd EOL                             { () } 
 
 cmd :
-  VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl, Null, [(Variable $2); $4])  }
-| expr LPAREN expr RPAREN             { CommandNode(Rpc, Null, [$1; $3] }
-| MALLOC LPAREN VAR RPAREN            { CommandNode(Doa, Null, [(Variable $3)] }
-| VAR ASSIGN expr                     { CommandNode(Vass, [(Variable $1), $3]) }
-| expr PERIOD expr ASSIGN expr        { CommandNode(Fass, [$1; $3; $5] ) }
-| SKIP                                { CommandNode(Skip, Null, []) }
-| LCURLYB cmd SEMICOLON cmd RCURLYB   { CommandNode(Sq, [$2; $4]) }
-| WHILE bool cmd                      { CommandNode(While, [$2; $3]) }
-| IF bool cmd ELSE cmd                { CommandNode(If, [$2; $3; $5]) }
-| LCURLYB cmd PARAL cmd RCURLYB       { CommandNode(Para, [$2; $4] }
-| ATOM LPAREN cmd RPAREN              { CommandNode(Atom, [$3]) }
+  VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }
+| expr LPAREN expr RPAREN             { CommandNode(Rpc  , null_attr, Some [$1; $3]) }
+| MALLOC LPAREN VAR RPAREN            { CommandNode(Doa  , null_attr, Some [Variable($3, null_attr)]) }
+| VAR ASSIGN expr                     { CommandNode(Vass , null_attr, Some [Variable($1, null_attr); $3]) }
+| expr PERIOD expr ASSIGN expr        { CommandNode(Fass , null_attr, Some [$1; $3; $5] ) }
+| SKIP                                { CommandNode(Skip , null_attr, Nothing) }
+| LCURLYB cmd SEMICOLON cmd RCURLYB   { CommandNode(Sq   , null_attr, Some [$2; $4]) }
+| WHILE bool THEN cmd                 { CommandNode(While, null_attr, Some [$2; $4]) }
+| IF bool THEN cmd ELSE cmd           { CommandNode(If   , null_attr, Some [$2; $4; $6]) }
+| LCURLYB cmd PARAL cmd RCURLYB       { CommandNode(Para , null_attr, Some [$2; $4]) }
+| ATOM LPAREN cmd RPAREN              { CommandNode(Atom , null_attr, Some [$3]) }
 
 expr :
-  FIELD                               { Field($1) }
-| VAR                                 { Variable($1) }
-| NUM                                 { Num($1) }
-| NULL                                { ExpressionNode(Null, Null, []) }
-| expr MINUS expr                     { ExpressionNode(Minus, Null, [$1; $3]) }
-| expr PERIOD expr                    { ExpressionNode(Floc, Null, [$1; $3]) }
-| PROC VAR COLON cmd                  { ExpressionNode(Proc, Null, [(Var $2); $4]) }
+  FIELD                               { Field         ($1   , null_attr) }
+| VAR                                 { Variable      ($1   , null_attr) }
+| NUM                                 { Number        ($1   , null_attr) }
+| NULL                                { Null          null_attr }
+| expr MINUS expr                     { ExpressionNode(Minus, null_attr, Some [$1; $3]) }
+| expr PERIOD expr                    { ExpressionNode(Floc , null_attr, Some [$1; $3]) }
+| PROC VAR COLON cmd                  { ExpressionNode(Proc , null_attr, Some [Variable($2, null_attr); $4]) }
 
 bool :
-  TRUE                                { BoolNode(True, Null, Nothing) }
-| FALSE                               { BoolNode(False, Null, Nothing) }
-| expr EQ expr                        { BoolNode(Equal, Null, Some ([$1; $3])) }
-| expr LT expr                        { BoolNode(LT, Null, Some [$1; $3]) }
+  TRUE                                { BoolNode(True , null_attr, Nothing) }
+| FALSE                               { BoolNode(False, null_attr, Nothing) }
+| expr EQ expr                        { BoolNode(Eq   , null_attr, Some [$1; $3]) }
+| expr LT expr                        { BoolNode(Lt   , null_attr, Some [$1; $3]) }
 
 %% 

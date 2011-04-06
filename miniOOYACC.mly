@@ -156,9 +156,92 @@ let rec print_tree = function
       print_string "Null "
   ;;
 
-let write_back = function
+let rec return n list =
+  match list with
+    [] -> Nothing
+  | h :: t -> if n == 0 then Some h else return (n - 1) t
+  ;;
+
+let rec write_back = function
     CommandNode(spec, _, l) ->
-      ( match
+      ( match spec, l with
+        Decl, Some list -> 
+          begin
+            print_string "var ";
+            write_back (return 0 list);
+            print_string "; ";
+            write_back (return 1 list)
+          end
+      | Rpc, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string "(";
+            write_back (return 1 list);
+            print_string ") "
+          end
+      | Doa, Some list ->
+          begin
+            print_string "malloc(";
+            write_back (return 0 list);
+            print_string ") "
+          end
+      | Vass, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string "= ";
+            write_back (return 1 list)
+          end
+      | Fass, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string ".";
+            write_back (return 1 list);
+            print_string "= ";
+            write_back (return 2 list);
+          end
+      | Skip, _ ->
+          print_string "null "
+      | Sq, Some list ->
+          begin
+            print_string "{ ";
+            write_back (return 0 list);
+            print_string "; ";
+            write_back (return 1 list);
+            print_string "} "
+          end
+      | While, Some list ->
+          begin
+            print_string "while ";
+            write_back (return 0 list);
+            print_string "then ";
+            write_back (return 1 list)
+          end
+      | If, Some list ->
+          begin
+            print_string "if ";
+            write_back (return 0 list);
+            print_string "then ";
+            write_back (return 1 list);
+            print_string "else ";
+            write_back (return 2 list)
+          end
+      | Para, Some list ->
+          begin
+            print_string "{ ";
+            write_back (return 0 list);
+            print_string "||| ";
+            write_back (return 1 list);
+            print_string "} "
+          end
+      | Atom, Some list ->
+          begin
+            print_string "atom(";
+            write_back (return 0 list);
+            print_string ") "
+          end )
+  | ExpressionNode(spec, _, 
+            
+            
  
 %}
 

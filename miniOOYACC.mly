@@ -156,10 +156,12 @@ let rec print_tree = function
       print_string "Null "
   ;;
 
+exception Fail of string;;
+
 let rec return n list =
   match list with
-    [] -> Nothing
-  | h :: t -> if n == 0 then Some h else return (n - 1) t
+    [] -> raise (Fail "return: the list is empty")
+  | h :: t -> if n == 0 then h else return (n - 1) t
   ;;
 
 let rec write_back = function
@@ -175,7 +177,7 @@ let rec write_back = function
       | Rpc, Some list ->
           begin
             write_back (return 0 list);
-            print_string "(";
+            print_string "( ";
             write_back (return 1 list);
             print_string ") "
           end
@@ -239,7 +241,65 @@ let rec write_back = function
             write_back (return 0 list);
             print_string ") "
           end )
-  | ExpressionNode(spec, _, 
+  | ExpressionNode(spec, _, l) ->
+      ( match spec, l with
+        Minus, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string "- ";
+            write_back (return 1 list)
+          end
+      | Proc, Some list ->
+          begin
+            print_string "proc ";
+            write_back (return 0 list);
+            print_string ": ";
+            write_back (return 1 list)
+          end
+      | Floc, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string ".";
+            write_back (return 1 list);
+          end )
+  | BoolNode(spec, _, l) ->
+      ( match spec, l with
+        Eq, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string "== ";
+            write_back (return 1 list)
+          end
+      | Lt, Some list ->
+          begin
+            write_back (return 0 list);
+            print_string "< ";
+            write_back (return 1 list)
+          end
+      | True, Nothing ->
+          print_string "true "
+      | False, Nothing ->
+          print_string "false " )
+  | Field(s, _) ->
+      begin
+        print_string s;
+        print_string " "
+      end
+  | Variable(s, _) ->
+      begin
+        print_string s;
+        print_string " "
+      end
+  | Number(i, _) ->
+      begin
+        print_string (string_of_int i);
+        print_string " "
+      end
+  | Null _ ->
+      print_string "null "
+  ;;
+            
+          
             
             
  
@@ -262,7 +322,7 @@ let rec write_back = function
 %%
 
 prog :
-  cmd EOL                             { print_tree $1 } 
+  cmd EOL                             { (write_back $1); print_newline(); } 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }

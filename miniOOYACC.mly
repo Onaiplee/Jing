@@ -155,6 +155,10 @@ let rec print_tree = function
   | Null _ ->
       print_string "Null "
   ;;
+
+let write_back = function
+    CommandNode(spec, _, l) ->
+      ( match
  
 %}
 

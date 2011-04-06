@@ -31,7 +31,7 @@ all :
 
 .PHONY : clean
 clean :
-	@-/bin/rm -f *.cmo *.cmi ${FILE}LEX.ml ${FILE}YACC.mli ${FILE}YACC.ml *~
+	@-/bin/rm -f  ${FILE} *.cmo *.cmi ${FILE}LEX.ml ${FILE}YACC.mli ${FILE}YACC.ml *~
 
 .PHONY : distrib
 distrib : clean

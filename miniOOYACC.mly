@@ -7,17 +7,10 @@ type 'a option =
   | Nothing
   ;;
 
-type expression =
-    Field
-  | Var
-  | Num
-  | Null
-  | Minus
+type node_spec =
+    Minus
   | Floc
   | Proc
-  ;;
-
-type command =
   | Decl
   | Rpc
   | Doa
@@ -29,14 +22,32 @@ type command =
   | If
   | Para
   | Atom
+  | True
+  | False
+  | Eq
+  | Lt
   ;;
+
+(* type command =
+  | Decl
+  | Rpc
+  | Doa
+  | Vass
+  | Fass
+  | Skip
+  | Sq
+  | While
+  | If
+  | Para
+  | Atom
+  ;; 
 
 type abool =
     True
   | False
   | Eq
   | Lt
-  ;;
+  ;; *)
 
 type node_attr =
     { mutable eattr : bool option;
@@ -45,9 +56,9 @@ type node_attr =
 
 
 type abstract_node =
-    ExpressionNode of expression * node_attr * abstract_node list option
-  | CommandNode of command * node_attr * abstract_node list option
-  | BoolNode of abool * node_attr * abstract_node list option
+    ExpressionNode of node_spec * node_attr * abstract_node list option
+  | CommandNode of node_spec * node_attr * abstract_node list option
+  | BoolNode of node_spec * node_attr * abstract_node list option
   | Variable of string * node_attr
   | Field of string * node_attr
   | Number of int * node_attr
@@ -73,31 +84,78 @@ let null_attr =
 let print_spec = function
     Decl  -> print_string "Declaration "
   | Rpc   -> print_string "RecursivePC "
-  | Doa   -> print_string "DynamicAlloc"
-  | Vass  -> print_string "VarAssign   "
+  | Doa   -> print_string "DynamicAlloc "
+  | Vass  -> print_string "VarAssign "
   | Fass  -> print_string "FieldAssign "
-  | Skip  -> print_string "skip        "
-  | Sq    -> print_string "Sequence    "
-  | While -> print_string "While       "
-  | If    -> print_string "If          "
-  | Para  -> print_string "Parallel    "
-  | Atom  -> print_string "AtomAction  "
+  | Skip  -> print_string "Skip "
+  | Sq    -> print_string "Sequence "
+  | While -> print_string "While "
+  | If    -> print_string "If "
+  | Para  -> print_string "Parallel "
+  | Atom  -> print_string "AtomAction "
+  | Minus -> print_string "Minus "
+  | Floc  -> print_string "Floc "
+  | Proc  -> print_string "Proc "
+  | True  -> print_string "True "
+  | False -> print_string "False "
+  | Eq    -> print_string "Eq "
+  | Lt    -> print_string "Lt "
   ;;
 
-let rec print_tree = function
+let rec my_map f l =
+  match l with
     [] -> ()
-  | h::t -> 
-      match h with 
-        CommandNode(spec, _, Some list) ->
-          print_spec spec;
-          print_tree list
-      | ExpressionNode(spec, _, Some list) ->
-          print_spec spec;
-          print_tree list
-      | 
-      
-    
+  | h :: t -> 
+      begin
+        (f h);
+        my_map f t
+      end
+        ;;
 
+let rec print_tree = function 
+    CommandNode(spec, _, l) ->
+      ( match l with
+        Some list ->
+          begin
+            print_spec spec;
+            my_map print_tree list
+          end
+      | Nothing ->
+          print_spec spec )
+  | ExpressionNode(spec, _, l) ->
+      ( match l with
+        Some list ->
+          begin
+            print_spec spec;
+            my_map print_tree list
+          end
+      | Nothing -> 
+          print_spec spec )
+  | BoolNode(spec, _, l) ->
+      ( match l with
+        Some list -> 
+          begin
+            print_spec spec;
+            my_map print_tree list
+          end
+      | Nothing ->
+          print_spec spec )
+  | Variable(s, _) ->
+      begin
+        print_string s;
+        print_string " "
+      end
+  | Field(s, _) -> 
+      print_string s
+  | Number(i, _) ->
+      begin
+        print_string (string_of_int i);
+        print_string " "
+      end
+  | Null _ ->
+      print_string "Null "
+  ;;
+ 
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN
@@ -117,7 +175,7 @@ let rec print_tree = function
 %%
 
 prog :
-  cmd EOL                             { () } 
+  cmd EOL                             { print_tree $1 } 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }

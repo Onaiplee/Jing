@@ -51,7 +51,7 @@ type abool =
 
 type node_attr =
     { mutable eattr : bool option;
-      mutable vattr : bool option
+      mutable vattr : string list
     } ;;
 
 
@@ -78,7 +78,7 @@ let get_eattr e =
 
 let null_attr = 
   { eattr = Nothing;
-    vattr = Nothing
+    vattr = []
   } ;;
 
 let print_spec = function
@@ -298,7 +298,21 @@ let rec write_back = function
   | Null _ ->
       print_string "null "
   ;;
-            
+
+(* let rec static_check = function *)
+let rec belong e s =
+  match s with
+    [] -> false
+  | h :: t -> if e == h then true else belong e t
+  ;;
+
+let (@) e s = belong e s;;
+
+let rec setv = function
+    CommandNode(spec, attr, l) ->
+      ( match spec, l with
+        Decl, Some list ->
+          setv (return 1 list)
           
             
             

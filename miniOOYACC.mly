@@ -112,44 +112,53 @@ let rec my_map f l =
       end
         ;;
 
+let rec print_string_list = function
+    [] -> ()
+  | h :: t -> print_string h; print_string_list t;;
+
+
 let rec print_tree = function 
-    CommandNode(spec, _, l) ->
+    CommandNode(spec, attr, l) ->
       ( match l with
         Some list ->
           begin
             print_spec spec;
+            print_string_list attr.vattr;
             my_map print_tree list
           end
       | Nothing ->
           print_spec spec )
-  | ExpressionNode(spec, _, l) ->
+  | ExpressionNode(spec, attr, l) ->
       ( match l with
         Some list ->
           begin
             print_spec spec;
+            print_string_list attr.vattr;
             my_map print_tree list
           end
       | Nothing -> 
           print_spec spec )
-  | BoolNode(spec, _, l) ->
+  | BoolNode(spec, attr, l) ->
       ( match l with
         Some list -> 
           begin
             print_spec spec;
+            print_string_list attr.vattr;
             my_map print_tree list
           end
       | Nothing ->
           print_spec spec )
-  | Variable(s, _) ->
+  | Variable(s, attr) ->
       begin
-        print_string s;
-        print_string " "
+        (* print_string s; *)
+        print_string " ";
+        print_string_list attr.vattr;
       end
   | Field(s, _) -> 
       print_string s
   | Number(i, _) ->
       begin
-        print_string (string_of_int i);
+        (* print_string (string_of_int i); *)
         print_string " "
       end
   | Null _ ->
@@ -299,14 +308,13 @@ let rec write_back = function
       print_string "null "
   ;;
 
-(* let rec static_check = function *)
-let rec belong e s =
+let rec not_belong e s =
   match s with
-    [] -> false
-  | h :: t -> if e == h then true else belong e t
+    [] -> true
+  | h :: t -> if e = h then false else not_belong e t
   ;;
 
-let (@@) e s = belong e s;;
+let (@@) e s = not_belong e s;;
 
 let getVar = function
     Variable(s, _) -> s
@@ -320,8 +328,11 @@ let rec setv v = function
           begin
             attr.vattr <- v;
             let node = (return 0 list) in
-            let newattr = (getVar node) :: v in
-            setv newattr (return 1 list);
+            let newattr = v @ [(getVar node)] in
+            begin
+              (* print_string_list newattr; *)
+              setv newattr (return 1 list);
+            end
           end
       | Rpc, Some list ->
           begin
@@ -359,7 +370,9 @@ let rec setv v = function
           end
       | If, Some list ->
           begin
-            attr.vattr <- v;
+            (* print_string_list attr.vattr; *)
+            attr.vattr <- v; 
+            print_string_list attr.vattr;
             setv v (return 0 list);
             setv v (return 1 list);
             setv v (return 2 list);
@@ -387,8 +400,11 @@ let rec setv v = function
           begin
             attr.vattr <- v;
             let node = (return 0 list) in
-            let newattr = (getVar node) :: v in
-            setv newattr (return 1 list)
+            let newattr = v @ [getVar node] in
+            begin
+              (* print_string_list newattr; *)
+              setv newattr (return 1 list)
+            end
           end
       | Floc, Some list ->
           begin 
@@ -398,9 +414,9 @@ let rec setv v = function
           end )
   | BoolNode(spec, attr, l) ->
       ( match spec, l with
-        True, Nothing ->
+        True, _ ->
           attr.vattr <- v
-      | False, Nothing ->
+      | False, _ ->
           attr.vattr <- v
       | (Eq | Lt), Some list ->
           begin
@@ -416,9 +432,85 @@ let rec setv v = function
       attr.vattr <- v
   | Null attr ->
       attr.vattr <- v    
-  ;;   
-            
- 
+  ;;
+
+let rec gete = function
+    CommandNode(spec, attr, l) ->
+      ( match spec, l with
+        Decl, Some list ->
+          gete (return 1 list)
+      | Rpc, Some list -> 
+          (gete (return 0 list)) or (gete (return 1 list))
+      | Doa, Some list ->
+          (getVar (return 0 list)) @@ attr.vattr
+      | Vass, Some list ->
+          let cattr = ((getVar (return 0 list)) @@ attr.vattr) in
+          begin
+            (* if cattr then print_string "true" else print_string "false"; *)
+            cattr or (gete (return 1 list))
+          end
+      | Fass, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list)) or (gete (return 2 list))
+      | Skip, _ -> false
+      | Sq, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list))
+      | While, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list))
+      | If, Some list ->
+          begin
+            (* print_string_list attr.vattr; *)
+            (gete (return 0 list)) or (gete (return 1 list)) or (gete (return 2 list))
+          end
+      | Para, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list))
+      | Atom, Some list ->
+          gete (return 0 list) )
+  | ExpressionNode(spec, attr, l) ->
+      ( match spec, l with
+        Minus, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list))
+      | Proc, Some list ->
+          begin
+            (* print_string_list attr.vattr; *)
+            gete (return 1 list)
+          end
+      | Floc, Some list ->
+          (gete (return 0 list)) or (gete (return 1 list)) )
+  | BoolNode(spec, attr, l) ->
+      ( match spec, l with
+        (True | False), _ -> false
+      | (Eq | Lt), Some list ->
+          begin
+            print_string_list attr.vattr;
+            (gete (return 0 list)) or (gete (return 1 list))
+          end )
+  | Variable(s, attr) ->
+      let cattr = s @@ attr.vattr in
+      begin
+        (* print_string_list attr.vattr; *)
+        (* print_string "Var: "; *)
+        (* print_string s; *)
+        (* if cattr then print_string "true" else print_string "false"; *)
+        cattr;
+      end
+  | Field(_, _) -> false
+  | Number(_, _) -> false
+  | Null _ -> false
+  ;;
+
+let static_check node =
+  begin
+    setv [] node;
+    let error = gete node in
+    if error then print_string "Error" else print_string "correct";
+    print_newline()
+end ;;
+  
+          
+          
+          
+        
+
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN
@@ -438,7 +530,7 @@ let rec setv v = function
 %%
 
 prog :
-  cmd EOL                             { (write_back $1); print_newline(); (setv [] $1); } 
+  cmd EOL                             { (setv [] $1); (print_tree $1); (if (gete $1) then print_string "error" else print_string "correct");  } 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }

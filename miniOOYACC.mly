@@ -306,15 +306,117 @@ let rec belong e s =
   | h :: t -> if e == h then true else belong e t
   ;;
 
-let (@) e s = belong e s;;
+let (@@) e s = belong e s;;
 
-let rec setv = function
+let getVar = function
+    Variable(s, _) -> s
+  | _ -> raise (Fail "getVar: the node contains no variable")
+  ;;
+
+let rec setv v = function
     CommandNode(spec, attr, l) ->
       ( match spec, l with
         Decl, Some list ->
-          setv (return 1 list)
-          
-            
+          begin
+            attr.vattr <- v;
+            let node = (return 0 list) in
+            let newattr = (getVar node) :: v in
+            setv newattr (return 1 list);
+          end
+      | Rpc, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list);
+          end
+      | Doa, Some list ->
+          attr.vattr <- v
+      | Vass, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 1 list)
+          end
+      | Fass, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list);
+            setv v (return 2 list)
+          end
+      | Skip, _ ->
+          attr.vattr <- v
+      | Sq, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end
+      | While, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end
+      | If, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list);
+            setv v (return 2 list);
+          end
+      | Para, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end
+      | Atom, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list)
+          end )
+  | ExpressionNode(spec, attr, l) ->
+      ( match spec, l with
+        Minus, Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end
+      | Proc, Some list ->
+          begin
+            attr.vattr <- v;
+            let node = (return 0 list) in
+            let newattr = (getVar node) :: v in
+            setv newattr (return 1 list)
+          end
+      | Floc, Some list ->
+          begin 
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end )
+  | BoolNode(spec, attr, l) ->
+      ( match spec, l with
+        True, Nothing ->
+          attr.vattr <- v
+      | False, Nothing ->
+          attr.vattr <- v
+      | (Eq | Lt), Some list ->
+          begin
+            attr.vattr <- v;
+            setv v (return 0 list);
+            setv v (return 1 list)
+          end )
+  | Field(_, attr) ->
+      attr.vattr <- v
+  | Variable(_, attr) ->
+      attr.vattr <- v
+  | Number(_, attr) ->
+      attr.vattr <- v
+  | Null attr ->
+      attr.vattr <- v    
+  ;;   
             
  
 %}
@@ -336,7 +438,7 @@ let rec setv = function
 %%
 
 prog :
-  cmd EOL                             { (write_back $1); print_newline(); } 
+  cmd EOL                             { (write_back $1); print_newline(); (setv [] $1); } 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }

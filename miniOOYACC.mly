@@ -1,516 +1,148 @@
 /* File miniOOYACC.mly */
 
 %{
+exception Fail of string;;
 
 type 'a option =
     Some of 'a
-  | Nothing
+  | None
   ;;
 
-type node_spec =
-    Minus
-  | Floc
-  | Proc
-  | Decl
-  | Rpc
-  | Doa
-  | Vass
-  | Fass
-  | Skip
-  | Sq
-  | While
-  | If
-  | Para
-  | Atom
-  | True
-  | False
-  | Eq
-  | Lt
-  ;;
+(* The vattr is the attribute of the AST nodes which shows the visible variables the node has. *)
 
-(* type command =
-  | Decl
-  | Rpc
-  | Doa
-  | Vass
-  | Fass
-  | Skip
-  | Sq
-  | While
-  | If
-  | Para
-  | Atom
-  ;; 
+type vattr = string list option;;
 
-type abool =
+(* Use mutual recursive types to define the AST nodes *)
+
+type acmd = 
+    Decl of string * acmd * vattr
+  | Rpc of aexpr * aexpr * vattr
+  | Doa of string * vattr
+  | Vass of string * aexpr * vattr
+  | Fass of aexpr * aexpr * aexpr * vattr
+  | Skip
+  | Sq of acmd * acmd * vattr
+  | While of abool * acmd * vattr
+  | If of abool * acmd * acmd * vattr
+  | Para of acmd * acmd * vattr
+  | Atom of acmd * vattr
+
+and aexpr =
+    Field of string
+  | Number of int
+  | Minus of aexpr * aexpr * vattr
+  | Null
+  | Var of string * vattr
+  | Floc of aexpr * aexpr * vattr
+  | Proc of string * acmd * vattr
+
+and abool =
     True
   | False
-  | Eq
-  | Lt
-  ;; *)
-
-type node_attr =
-    { mutable eattr : bool option;
-      mutable vattr : string list
-    } ;;
-
-
-type abstract_node =
-    ExpressionNode of node_spec * node_attr * abstract_node list option
-  | CommandNode of node_spec * node_attr * abstract_node list option
-  | BoolNode of node_spec * node_attr * abstract_node list option
-  | Variable of string * node_attr
-  | Field of string * node_attr
-  | Number of int * node_attr
-  | Null of node_attr
+  | Eq of aexpr * aexpr * vattr
+  | Lt of aexpr * aexpr * vattr
   ;;
 
-let get_eattr e =
-  match e with
-    ExpressionNode (_, attr, _) -> attr.eattr
-  | CommandNode    (_, attr, _) -> attr.eattr
-  | BoolNode       (_, attr, _) -> attr.eattr
-  | Variable       (_, attr   ) -> attr.eattr
-  | Field          (_, attr   ) -> attr.eattr
-  | Number         (_, attr   ) -> attr.eattr
-  | Null           (attr      ) -> attr.eattr
+(* The expand function expand the v set by a new element s *)
+
+let expand s v =
+  match v with 
+    Some l -> Some (s :: l)
+  | _      -> raise (Fail "expand: the v is nothing")
   ;;
 
-let null_attr = 
-  { eattr = Nothing;
-    vattr = []
-  } ;;
+(* setX is to build a new decorated AST with the V attributes by traveling the original AST from top to bottom *)
+(* The difference between the original tree and new one is the new tree consists of actual V attributes but the*)
+(* original one set the V attributes to None. *)  
 
-let print_spec = function
-    Decl  -> print_string "Declaration "
-  | Rpc   -> print_string "RecursivePC "
-  | Doa   -> print_string "DynamicAlloc "
-  | Vass  -> print_string "VarAssign "
-  | Fass  -> print_string "FieldAssign "
-  | Skip  -> print_string "Skip "
-  | Sq    -> print_string "Sequence "
-  | While -> print_string "While "
-  | If    -> print_string "If "
-  | Para  -> print_string "Parallel "
-  | Atom  -> print_string "AtomAction "
-  | Minus -> print_string "Minus "
-  | Floc  -> print_string "Floc "
-  | Proc  -> print_string "Proc "
-  | True  -> print_string "True "
-  | False -> print_string "False "
-  | Eq    -> print_string "Eq "
-  | Lt    -> print_string "Lt "
+let rec setc v node =
+  match node with
+    Decl(s, c, _) ->
+      let new_v = expand s v in 
+      Decl(s, setc new_v c, v)
+  | Rpc(e1, e2, _) -> Rpc(sete v e1, sete v e2, v)
+  | Doa(s, _) -> Doa(s, v)
+  | Vass(s, e, _) -> Vass(s, sete v e, v)
+  | Fass(e1, e2, e3, _) -> Fass(sete v e1, sete v e2, sete v e3, v)
+  | Skip -> Skip
+  | Sq(c1, c2, _) -> Sq(setc v c1, setc v c2, v)
+  | While(b, c, _) -> While(setb v b, setc v c, v)
+  | If(b, c1, c2, _) -> If(setb v b, setc v c1, setc v c2, v)
+  | Para(c1, c2, _) -> Para(setc v c1, setc v c2, v)
+  | Atom (c, _) -> Atom(setc v c, v)
+and sete v node =
+  match node with
+    Field s -> Field s
+  | Number i -> Number i
+  | Var (s, _) -> Var(s, v)
+  | Null -> Null
+  | Minus(e1, e2, _) -> Minus(sete v e1, sete v e2, v)
+  | Floc(e1, e2, _) -> Floc(sete v e1, sete v e2, v)
+  | Proc(s, c, _) ->
+      let new_v = expand s v in
+      Proc(s, setc new_v c, v)
+and setb v node =
+  match node with
+    True -> True
+  | False -> False
+  | Eq(e1, e2, _) -> Eq(sete v e1, sete v e2, v)
+  | Lt(e1, e2, _) -> Lt(sete v e1, sete v e2, v)
   ;;
 
-let rec my_map f l =
-  match l with
-    [] -> ()
-  | h :: t -> 
-      begin
-        (f h);
-        my_map f t
-      end
-        ;;
+(* not_belong takes e v as arguments return true is e does not belong to v and vice versa *)
 
-let rec print_string_list = function
-    [] -> ()
-  | h :: t -> print_string h; print_string_list t;;
-
-
-let rec print_tree = function 
-    CommandNode(spec, attr, l) ->
-      ( match l with
-        Some list ->
-          begin
-            print_spec spec;
-            print_string_list attr.vattr;
-            my_map print_tree list
-          end
-      | Nothing ->
-          print_spec spec )
-  | ExpressionNode(spec, attr, l) ->
-      ( match l with
-        Some list ->
-          begin
-            print_spec spec;
-            print_string_list attr.vattr;
-            my_map print_tree list
-          end
-      | Nothing -> 
-          print_spec spec )
-  | BoolNode(spec, attr, l) ->
-      ( match l with
-        Some list -> 
-          begin
-            print_spec spec;
-            print_string_list attr.vattr;
-            my_map print_tree list
-          end
-      | Nothing ->
-          print_spec spec )
-  | Variable(s, attr) ->
-      begin
-        (* print_string s; *)
-        print_string " ";
-        print_string_list attr.vattr;
-      end
-  | Field(s, _) -> 
-      print_string s
-  | Number(i, _) ->
-      begin
-        (* print_string (string_of_int i); *)
-        print_string " "
-      end
-  | Null _ ->
-      print_string "Null "
+let rec not_belong e v =
+  match v with
+  | Some list -> 
+      ( match list with
+      | [] -> true
+      | h :: t -> if e = h then false else not_belong e (Some t) )
+  | None -> raise (Fail "not_belong: v is None")
   ;;
 
-exception Fail of string;;
+(* getX is to get the error attributes which depend on the V attributes of the decorated AST nodes *)
 
-let rec return n list =
-  match list with
-    [] -> raise (Fail "return: the list is empty")
-  | h :: t -> if n == 0 then h else return (n - 1) t
+let rec getc node =
+  match node with
+    Decl(_, c, _) -> getc c
+  | Rpc(e1, e2, _) -> gete e1 or gete e2
+  | Doa(s, v) -> not_belong s v
+  | Vass(s, e, v) -> not_belong s v or gete e
+  | Fass(e1, e2, e3, _) -> gete e1 or gete e2 or gete e3
+  | Skip -> false
+  | Sq(c1, c2, _) -> getc c1 or getc c2
+  | While(b, c, _) -> getb b or getc c
+  | If(b, c1, c2, _) -> getb b or getc c1 or getc c2
+  | Para(c1, c2, _) -> getc c1 or getc c2
+  | Atom (c, _) -> getc c
+and gete node =
+  match node with
+    Field _ -> false
+  | Number _ -> false
+  | Null -> false
+  | Var(s, v) -> not_belong s v
+  | Minus(e1, e2, _) -> gete e1 or gete e2
+  | Floc(e1, e2, _) -> gete e1 or gete e2
+  | Proc(_, c, _) -> getc c
+and getb node =
+  match node with
+    (True | False) -> false
+  | Eq(e1, e2, _) -> gete e1 or gete e2
+  | Lt(e1, e2, _) -> gete e1 or gete e2
   ;;
 
-let rec write_back = function
-    CommandNode(spec, _, l) ->
-      ( match spec, l with
-        Decl, Some list -> 
-          begin
-            print_string "var ";
-            write_back (return 0 list);
-            print_string "; ";
-            write_back (return 1 list)
-          end
-      | Rpc, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string "( ";
-            write_back (return 1 list);
-            print_string ") "
-          end
-      | Doa, Some list ->
-          begin
-            print_string "malloc(";
-            write_back (return 0 list);
-            print_string ") "
-          end
-      | Vass, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string "= ";
-            write_back (return 1 list)
-          end
-      | Fass, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string ".";
-            write_back (return 1 list);
-            print_string "= ";
-            write_back (return 2 list);
-          end
-      | Skip, _ ->
-          print_string "null "
-      | Sq, Some list ->
-          begin
-            print_string "{ ";
-            write_back (return 0 list);
-            print_string "; ";
-            write_back (return 1 list);
-            print_string "} "
-          end
-      | While, Some list ->
-          begin
-            print_string "while ";
-            write_back (return 0 list);
-            print_string "then ";
-            write_back (return 1 list)
-          end
-      | If, Some list ->
-          begin
-            print_string "if ";
-            write_back (return 0 list);
-            print_string "then ";
-            write_back (return 1 list);
-            print_string "else ";
-            write_back (return 2 list)
-          end
-      | Para, Some list ->
-          begin
-            print_string "{ ";
-            write_back (return 0 list);
-            print_string "||| ";
-            write_back (return 1 list);
-            print_string "} "
-          end
-      | Atom, Some list ->
-          begin
-            print_string "atom(";
-            write_back (return 0 list);
-            print_string ") "
-          end )
-  | ExpressionNode(spec, _, l) ->
-      ( match spec, l with
-        Minus, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string "- ";
-            write_back (return 1 list)
-          end
-      | Proc, Some list ->
-          begin
-            print_string "proc ";
-            write_back (return 0 list);
-            print_string ": ";
-            write_back (return 1 list)
-          end
-      | Floc, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string ".";
-            write_back (return 1 list);
-          end )
-  | BoolNode(spec, _, l) ->
-      ( match spec, l with
-        Eq, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string "== ";
-            write_back (return 1 list)
-          end
-      | Lt, Some list ->
-          begin
-            write_back (return 0 list);
-            print_string "< ";
-            write_back (return 1 list)
-          end
-      | True, Nothing ->
-          print_string "true "
-      | False, Nothing ->
-          print_string "false " )
-  | Field(s, _) ->
-      begin
-        print_string s;
-        print_string " "
-      end
-  | Variable(s, _) ->
-      begin
-        print_string s;
-        print_string " "
-      end
-  | Number(i, _) ->
-      begin
-        print_string (string_of_int i);
-        print_string " "
-      end
-  | Null _ ->
-      print_string "null "
-  ;;
+(* static_check is to combine the getX and setX to do the static checking of the AST *)
 
-let rec not_belong e s =
-  match s with
-    [] -> true
-  | h :: t -> if e = h then false else not_belong e t
-  ;;
+let static_check root =
+  let decorated = setc (Some []) root in
+  getc decorated ;;
 
-let (@@) e s = not_belong e s;;
+(* print_result is to print the static semantics checking results out *)
 
-let getVar = function
-    Variable(s, _) -> s
-  | _ -> raise (Fail "getVar: the node contains no variable")
-  ;;
-
-let rec setv v = function
-    CommandNode(spec, attr, l) ->
-      ( match spec, l with
-        Decl, Some list ->
-          begin
-            attr.vattr <- v;
-            let node = (return 0 list) in
-            let newattr = v @ [(getVar node)] in
-            begin
-              (* print_string_list newattr; *)
-              setv newattr (return 1 list);
-            end
-          end
-      | Rpc, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list);
-          end
-      | Doa, Some list ->
-          attr.vattr <- v
-      | Vass, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 1 list)
-          end
-      | Fass, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list);
-            setv v (return 2 list)
-          end
-      | Skip, _ ->
-          attr.vattr <- v
-      | Sq, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end
-      | While, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end
-      | If, Some list ->
-          begin
-            (* print_string_list attr.vattr; *)
-            attr.vattr <- v; 
-            print_string_list attr.vattr;
-            setv v (return 0 list);
-            setv v (return 1 list);
-            setv v (return 2 list);
-          end
-      | Para, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end
-      | Atom, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list)
-          end )
-  | ExpressionNode(spec, attr, l) ->
-      ( match spec, l with
-        Minus, Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end
-      | Proc, Some list ->
-          begin
-            attr.vattr <- v;
-            let node = (return 0 list) in
-            let newattr = v @ [getVar node] in
-            begin
-              (* print_string_list newattr; *)
-              setv newattr (return 1 list)
-            end
-          end
-      | Floc, Some list ->
-          begin 
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end )
-  | BoolNode(spec, attr, l) ->
-      ( match spec, l with
-        True, _ ->
-          attr.vattr <- v
-      | False, _ ->
-          attr.vattr <- v
-      | (Eq | Lt), Some list ->
-          begin
-            attr.vattr <- v;
-            setv v (return 0 list);
-            setv v (return 1 list)
-          end )
-  | Field(_, attr) ->
-      attr.vattr <- v
-  | Variable(_, attr) ->
-      attr.vattr <- v
-  | Number(_, attr) ->
-      attr.vattr <- v
-  | Null attr ->
-      attr.vattr <- v    
-  ;;
-
-let rec gete = function
-    CommandNode(spec, attr, l) ->
-      ( match spec, l with
-        Decl, Some list ->
-          gete (return 1 list)
-      | Rpc, Some list -> 
-          (gete (return 0 list)) or (gete (return 1 list))
-      | Doa, Some list ->
-          (getVar (return 0 list)) @@ attr.vattr
-      | Vass, Some list ->
-          let cattr = ((getVar (return 0 list)) @@ attr.vattr) in
-          begin
-            (* if cattr then print_string "true" else print_string "false"; *)
-            cattr or (gete (return 1 list))
-          end
-      | Fass, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list)) or (gete (return 2 list))
-      | Skip, _ -> false
-      | Sq, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list))
-      | While, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list))
-      | If, Some list ->
-          begin
-            (* print_string_list attr.vattr; *)
-            (gete (return 0 list)) or (gete (return 1 list)) or (gete (return 2 list))
-          end
-      | Para, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list))
-      | Atom, Some list ->
-          gete (return 0 list) )
-  | ExpressionNode(spec, attr, l) ->
-      ( match spec, l with
-        Minus, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list))
-      | Proc, Some list ->
-          begin
-            (* print_string_list attr.vattr; *)
-            gete (return 1 list)
-          end
-      | Floc, Some list ->
-          (gete (return 0 list)) or (gete (return 1 list)) )
-  | BoolNode(spec, attr, l) ->
-      ( match spec, l with
-        (True | False), _ -> false
-      | (Eq | Lt), Some list ->
-          begin
-            print_string_list attr.vattr;
-            (gete (return 0 list)) or (gete (return 1 list))
-          end )
-  | Variable(s, attr) ->
-      let cattr = s @@ attr.vattr in
-      begin
-        (* print_string_list attr.vattr; *)
-        (* print_string "Var: "; *)
-        (* print_string s; *)
-        (* if cattr then print_string "true" else print_string "false"; *)
-        cattr;
-      end
-  | Field(_, _) -> false
-  | Number(_, _) -> false
-  | Null _ -> false
-  ;;
-
-let static_check node =
-  begin
-    setv [] node;
-    let error = gete node in
-    if error then print_string "Error" else print_string "correct";
-    print_newline()
-end ;;
-  
-          
-          
-          
-        
-
+let print_result root =
+  let result = static_check root in
+  if result then print_string "Error" else print_string "Correct" ;;
+      
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN
@@ -519,9 +151,9 @@ end ;;
 %token < int > NUM
 %token < string > VAR FIELD
 %type <unit> prog
-%type <abstract_node> cmd 
-%type <abstract_node> expr
-%type <abstract_node> bool
+%type <acmd> cmd 
+%type <aexpr> expr
+%type <abool> bool
 %left ASSIGN
 %left MINUS 
 %left PERIOD
@@ -530,34 +162,34 @@ end ;;
 %%
 
 prog :
-  cmd EOL                             { (setv [] $1); (print_tree $1); (if (gete $1) then print_string "error" else print_string "correct");  } 
+  cmd EOL                             { print_result $1; print_newline() } 
 
 cmd :
-  VARIABLE VAR SEMICOLON cmd          { CommandNode(Decl , null_attr, Some [Variable($2, null_attr); $4])  }
-| expr LPAREN expr RPAREN             { CommandNode(Rpc  , null_attr, Some [$1; $3]) }
-| MALLOC LPAREN VAR RPAREN            { CommandNode(Doa  , null_attr, Some [Variable($3, null_attr)]) }
-| VAR ASSIGN expr                     { CommandNode(Vass , null_attr, Some [Variable($1, null_attr); $3]) }
-| expr PERIOD expr ASSIGN expr        { CommandNode(Fass , null_attr, Some [$1; $3; $5] ) }
-| SKIP                                { CommandNode(Skip , null_attr, Nothing) }
-| LCURLYB cmd SEMICOLON cmd RCURLYB   { CommandNode(Sq   , null_attr, Some [$2; $4]) }
-| WHILE bool THEN cmd                 { CommandNode(While, null_attr, Some [$2; $4]) }
-| IF bool THEN cmd ELSE cmd           { CommandNode(If   , null_attr, Some [$2; $4; $6]) }
-| LCURLYB cmd PARAL cmd RCURLYB       { CommandNode(Para , null_attr, Some [$2; $4]) }
-| ATOM LPAREN cmd RPAREN              { CommandNode(Atom , null_attr, Some [$3]) }
+  VARIABLE VAR SEMICOLON cmd          { Decl   ($2, $4, None)     }
+| expr LPAREN expr RPAREN             { Rpc    ($1, $3, None)     }
+| MALLOC LPAREN VAR RPAREN            { Doa    ($3, None)         }
+| VAR ASSIGN expr                     { Vass   ($1, $3, None)     }
+| expr PERIOD expr ASSIGN expr        { Fass   ($1, $3, $5, None) }
+| SKIP                                { Skip                      }
+| LCURLYB cmd SEMICOLON cmd RCURLYB   { Sq     ($2, $4, None)     }
+| WHILE bool THEN cmd                 { While  ($2, $4, None)     }
+| IF bool THEN cmd ELSE cmd           { If     ($2, $4, $6, None) }
+| LCURLYB cmd PARAL cmd RCURLYB       { Para   ($2, $4, None)     }
+| ATOM LPAREN cmd RPAREN              { Atom   ($3, None)         }
 
 expr :
-  FIELD                               { Field         ($1   , null_attr) }
-| VAR                                 { Variable      ($1   , null_attr) }
-| NUM                                 { Number        ($1   , null_attr) }
-| NULL                                { Null          null_attr }
-| expr MINUS expr                     { ExpressionNode(Minus, null_attr, Some [$1; $3]) }
-| expr PERIOD expr                    { ExpressionNode(Floc , null_attr, Some [$1; $3]) }
-| PROC VAR COLON cmd                  { ExpressionNode(Proc , null_attr, Some [Variable($2, null_attr); $4]) }
+  FIELD                               { Field  $1                 }
+| VAR                                 { Var    ($1, None)         }
+| NUM                                 { Number $1                 }
+| NULL                                { Null                      }
+| expr MINUS expr                     { Minus  ($1, $3, None)     }
+| expr PERIOD expr                    { Floc   ($1, $3, None)     }
+| PROC VAR COLON cmd                  { Proc   ($2, $4, None)     }
 
 bool :
-  TRUE                                { BoolNode(True , null_attr, Nothing) }
-| FALSE                               { BoolNode(False, null_attr, Nothing) }
-| expr EQ expr                        { BoolNode(Eq   , null_attr, Some [$1; $3]) }
-| expr LT expr                        { BoolNode(Lt   , null_attr, Some [$1; $3]) }
+  TRUE                                { True                      }
+| FALSE                               { False                     }
+| expr EQ expr                        { Eq     ($1, $3, None)     }
+| expr LT expr                        { Lt     ($1, $3, None)     }
 
 %% 

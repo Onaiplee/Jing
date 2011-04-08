@@ -1,0 +1,26 @@
+Jing is yet another miniOO programming language interpreter which is derived from the project of the Honor 
+Programming Language course in New York University, instructed by Patrick Cousot. Jing is Objective oriented
+with a extremely simple grammar. The grammar is listed below: 
+
+                      The syntax of the miniOO                       
+
+     p, ..., x, ...   E   Var                                        
+             f, ...   E   Field                                      
+                  e   E   Exp                                        
+                  e  ::=  f                                          
+                       |  1 | e - e | ...                            
+                       |  null | x | e.e                             
+                       |  proc y:C                                   
+                  b   E   Bool                                       
+                  b  ::=  true | false | e == e | e < e | ...        
+                                                                     
+                  C   E   Cmd                                        
+                  C  ::=  var x;C                                    
+                       |  e(e)                                       
+                       |  malloc(x)                                  
+                       |  x = e                                      
+                       |  e.e = e                                    
+                       |  skip | {C;C} | while b C | if b C else C   
+                       |  {C|||C} | atom(C)                          
+
+The interpreter is written by Ocaml. To be continued ...

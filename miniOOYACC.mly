@@ -142,6 +142,33 @@ let static_check root =
 let print_result root =
   let result = static_check root in
   if result then print_string "Error" else print_string "Correct" ;;
+
+(* Transitional Semantics Part *)
+
+(* Definition of semantics domain *)
+
+type integers = Int of int;;
+
+type booleans = 
+    True
+  | False
+  | Error
+  ;;
+
+type objects = Objects;;
+
+type locations =
+    Obj of objects
+  | Null
+  ;;
+
+type closures = Clo of var * cmd * stack;;
+type values =
+    Field of integers
+  | Int of integers
+  | Loc of locations
+  | Clo of closures
+  ;;
       
 %}
 

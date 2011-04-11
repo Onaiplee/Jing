@@ -147,28 +147,75 @@ let print_result root =
 
 (* Definition of semantics domain *)
 
-type integers = Int of int;;
-
 type booleans = 
     True
   | False
   | Error
   ;;
 
-type objects = Objects;;
+type objects = Obj of int;;
 
 type locations =
-    Obj of objects
+    Loc of objects
   | Null
   ;;
 
-type closures = Clo of var * cmd * stack;;
+type env = Lookup of var * objects;;
+
+type frame = 
+    Decl of env
+  | Call of env * stack
+and stack =
+    frame list
+  ;;
+
+type closures = Closure of var * acmd * stack;;
+
 type values =
     Field of integers
-  | Int of integers
+  | Int of int
   | Loc of locations
   | Clo of closures
   ;;
+
+type tvalues =
+    Val of values
+  | Error
+  ;;
+
+type heap = Heap of objects * field * tvalues;;
+
+type states = State of stack * heap;;
+
+type ctrl =
+    Cmd of acmd
+  | Block of ctrl
+  ;;
+
+type configurations =
+    Conf of ctrl * state
+  | Error
+  ;;
+
+(* definitions of operations and type decomposition functions *)
+
+(* initialize a empty heap *)
+let heap_initialize () = 
+  ref ([], []);;
+
+(* initialize a empty stack *)
+let stack_initialize () = ref ([] : stack) ;;
+
+(* pop a most recently frame from stack *)
+let pop s =
+  match !s with
+    [] -> raise (Fail "The stack empty!")
+  | h :: t -> s := t
+  ;;
+
+(* push a new frame on top of the stack *)
+let push s frame = s := frame :: !s ;;
+  
       
 %}
 

@@ -148,22 +148,23 @@ let print_result root =
 (* Definition of semantics domain *)
 
 type booleans = 
-    True
-  | False
-  | Error
+    BoolTrue
+  | BoolFalse
+  | BoolError
   ;;
 
 type objects = Obj of int;;
 
 type locations =
     Loc of objects
-  | Null
+  | LocNull
   ;;
+type var = V of string ;;
 
 type env = Env of var * objects;;
 
 type frame = 
-    Decl of env
+    Declare of env
   | Call of env * stack
 and stack =
     frame list
@@ -171,8 +172,13 @@ and stack =
 
 type closures = Closure of var * acmd * stack;;
 
+type field = 
+    F of string
+  | Val
+  ;;
+
 type values =
-    Field of field
+    VField of field
   | Int of int
   | Location of locations
   | Clo of closures
@@ -180,12 +186,12 @@ type values =
 
 type tvalues =
     Value of values
-  | Error
+  | TvError
   ;;
 
 type heap = Heap of objects * field * tvalues;;
 
-type states = State of stack ref * heap ref ;;
+type states = State of stack ref * heap list ref ;;
 
 type ctrl =
     Cmd of acmd
@@ -195,7 +201,7 @@ type ctrl =
 type configurations =
     Conf of ctrl ref * states ref
   | Final of states ref
-  | Error
+  | ConfError
   ;;
 
 (* definitions of operations and type decomposition functions *)
@@ -248,7 +254,7 @@ let getHeap conf =
       ( match !s with
         State(_, h) -> h ) 
   | Final s -> raise (Fail "getHeap: the computation has been completed!")
-  | Error -> raise (Fail "getHeap: the state is Error!")
+  | ConfError -> raise (Fail "getHeap: the state is Error!")
   ;;
 
 (* decomposite the stack from current configuration *)
@@ -258,14 +264,14 @@ let getStack conf =
       ( match !s with
         State(s, _) -> s ) 
   | Final s -> raise (Fail "getStack: the computation has been completed!")
-  | Error -> raise (Fail "getStack: the state is Error!")
+  | ConfError -> raise (Fail "getStack: the state is Error!")
   ;;
 (* decomposite the Ctrl from current configuration *)
 let getCtrl conf =
   match !conf with
     Conf(c, _) -> c
   | Final _ -> raise (Fail "getCtrl: the computation has been completed!")
-  | Error -> raise (Fail "getCtrl: the state is Error!")
+  | ConfError -> raise (Fail "getCtrl: the state is Error!")
   ;;
 
 (* decomposite the current cmd from the configuration *)
@@ -277,7 +283,7 @@ let current conf =
   match !conf with
     Conf(ctrl, _) -> dec !ctrl
   | Final _ -> raise (Fail "The computation has been completed!")
-  | Error -> raise (Fail "current: the computation got an error!")
+  | ConfError -> raise (Fail "current: the computation got an error!")
   ;;
         
 (* the interior interprete procedure *)
@@ -289,8 +295,8 @@ let rec interprete conf =
   match c with
     Decl(var, cmd, _) -> 
       let l = newObj h in
-      s := Decl( Env(var, l) ) :: !s;
-      h := !h @ [Heap( l, Val, Value(Location(Null)) )];
+      s := Declare( Env(V var, l) ) :: !s;
+      h := !h @ [Heap( l, Val, Value(Location(LocNull)) )];
       ctrl := Block( (Cmd cmd) );
   | _ -> raise (Fail "interprete: to be implemented!")
   ;;

@@ -160,7 +160,7 @@ type locations =
   | Null
   ;;
 
-type env = Lookup of var * objects;;
+type env = Env of var * objects;;
 
 type frame = 
     Decl of env
@@ -172,20 +172,20 @@ and stack =
 type closures = Closure of var * acmd * stack;;
 
 type values =
-    Field of integers
+    Field of field
   | Int of int
-  | Loc of locations
+  | Location of locations
   | Clo of closures
   ;;
 
 type tvalues =
-    Val of values
+    Value of values
   | Error
   ;;
 
 type heap = Heap of objects * field * tvalues;;
 
-type states = State of stack * heap;;
+type states = State of stack ref * heap ref ;;
 
 type ctrl =
     Cmd of acmd
@@ -193,18 +193,35 @@ type ctrl =
   ;;
 
 type configurations =
-    Conf of ctrl * state
+    Conf of ctrl ref * states ref
+  | Final of states ref
   | Error
   ;;
 
 (* definitions of operations and type decomposition functions *)
 
-(* initialize a empty heap *)
-let heap_initialize () = 
-  ref ([], []);;
+
+(* heap_initialize: unit -> heap list ref                     *)
+(* initialize a empty heap.                                   *)
+let heap_initialize () = ref ([] : heap list);;
+
+(* newLoc: heap list -> int                                   *)
+(* find an available location in heap. Since in this version  *)
+(* the garbage collector has not yet been implemented so the  *)
+(* dirty locations will not be reclaimed. So an available     *)
+(* location will be always the next location, i.e., length of *)
+(* the heap.                                                  *)
+
+let newObj heap = 
+  let i = List.length !heap in
+  Obj i ;;
+  
 
 (* initialize a empty stack *)
 let stack_initialize () = ref ([] : stack) ;;
+
+(* push a new frame on top of the stack *)
+let push s frame = s := frame :: !s ;;
 
 (* pop a most recently frame from stack *)
 let pop s =
@@ -213,10 +230,75 @@ let pop s =
   | h :: t -> s := t
   ;;
 
-(* push a new frame on top of the stack *)
-let push s frame = s := frame :: !s ;;
-  
-      
+(* initialize a state *)
+let state_initialize () =
+  let s = stack_initialize () in
+  let h = heap_initialize () in
+  ref ( State(s, h) ) ;;
+
+(* initialize a configurations of the program *)
+let conf_initialize prog =
+  let state = state_initialize () in
+  ref ( Conf(prog, state) ) ;;
+
+(* decomposite the heap from current configuration *)
+let getHeap conf =
+  match !conf with
+    Conf(_, s) -> 
+      ( match !s with
+        State(_, h) -> h ) 
+  | Final s -> raise (Fail "getHeap: the computation has been completed!")
+  | Error -> raise (Fail "getHeap: the state is Error!")
+  ;;
+
+(* decomposite the stack from current configuration *)
+let getStack conf =
+  match !conf with
+    Conf(_, s) -> 
+      ( match !s with
+        State(s, _) -> s ) 
+  | Final s -> raise (Fail "getStack: the computation has been completed!")
+  | Error -> raise (Fail "getStack: the state is Error!")
+  ;;
+(* decomposite the Ctrl from current configuration *)
+let getCtrl conf =
+  match !conf with
+    Conf(c, _) -> c
+  | Final _ -> raise (Fail "getCtrl: the computation has been completed!")
+  | Error -> raise (Fail "getCtrl: the state is Error!")
+  ;;
+
+(* decomposite the current cmd from the configuration *)
+let current conf =
+  let rec dec c =
+    match c with
+      Cmd cmd -> cmd
+    | Block ctrl -> dec ctrl in
+  match !conf with
+    Conf(ctrl, _) -> dec !ctrl
+  | Final _ -> raise (Fail "The computation has been completed!")
+  | Error -> raise (Fail "current: the computation got an error!")
+  ;;
+        
+(* the interior interprete procedure *)
+let rec interprete conf = 
+  let c = current conf in
+  let s = getStack conf in
+  let h = getHeap conf in
+  let ctrl = getCtrl conf in
+  match c with
+    Decl(var, cmd, _) -> 
+      let l = newObj h in
+      s := Decl( Env(var, l) ) :: !s;
+      h := !h @ [Heap( l, Val, Value(Location(Null)) )];
+      ctrl := Block( (Cmd cmd) );
+  | _ -> raise (Fail "interprete: to be implemented!")
+  ;;
+
+(* the miniOO interpreter *)
+let interpreter prog =
+  let init_conf = conf_initialize prog in
+  interprete init_conf ;;
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN

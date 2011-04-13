@@ -211,7 +211,7 @@ type configurations =
 (* initialize a empty heap.                                   *)
 let heap_initialize () = ref ([] : heap list);;
 
-(* newLoc: heap list -> int                                   *)
+(* newObj: heap list ref -> int                               *)
 (* find an available location in heap. Since in this version  *)
 (* the garbage collector has not yet been implemented so the  *)
 (* dirty locations will not be reclaimed. So an available     *)
@@ -221,10 +221,39 @@ let heap_initialize () = ref ([] : heap list);;
 let newObj heap = 
   let i = List.length !heap in
   Obj i ;;
+
+(* getVal: objects -> heap list ref -> tvalues                *)
+(* get the [objects] location in the heap and if the Field is *)
+(* Val, return the according tainted value.                   *)
+let getVal obj heap =
+  match List.nth !heap obj with
+    Val -> 
   
 
 (* initialize a empty stack *)
 let stack_initialize () = ref ([] : stack) ;;
+
+(* lookup: string -> stack ref -> objects                     *)
+(* lookup a variable in the stack and return the non-null     *)
+(* locations(objects) on the heap.                            *)
+let lookup x stack =
+  let is_there s env =
+    match env with
+      Env(v, o) -> 
+        ( match v with
+          V s -> if s = x then true then false ) in
+  let obj env =
+    match env with
+      Env(_, o) -> o in
+  
+(* lookup body starts from here *)
+  match !stack with
+    [] -> raise (Fail "lookup failed to find the variable")
+  | h :: t ->
+      ( match h with
+        Declare env -> if is_there x env then obj env else lookup x t
+      | _ -> lookup x t )
+  ;;
 
 (* push a new frame on top of the stack *)
 let push s frame = s := frame :: !s ;;
@@ -286,6 +315,16 @@ let current conf =
   | ConfError -> raise (Fail "current: the computation got an error!")
   ;;
         
+(* eval a expression with a given state *)
+let eval expr stack heap =
+  match expr with
+    Number i -> Value(Int i)
+  | Var(x, _) -> 
+      let loc = lookup x stack in
+      match heap
+  | _ -> raise (Fail "to be implemented!")
+  ;;
+
 (* the interior interprete procedure *)
 let rec interprete conf = 
   let c = current conf in
@@ -298,6 +337,10 @@ let rec interprete conf =
       s := Declare( Env(V var, l) ) :: !s;
       h := !h @ [Heap( l, Val, Value(Location(LocNull)) )];
       ctrl := Block( (Cmd cmd) );
+  | Vass(x, e, _) -> 
+      ( match eval e !s !h with
+        TvError -> ();
+      | Value v -> (); )
   | _ -> raise (Fail "interprete: to be implemented!")
   ;;
 

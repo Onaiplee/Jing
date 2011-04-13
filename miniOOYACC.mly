@@ -189,7 +189,7 @@ type tvalues =
   | TvError
   ;;
 
-type heap = Heap of objects * field * tvalues;;
+type heap = Heap of (field ref * tvalues ref) list ref;;
 
 type states = State of stack ref * heap list ref ;;
 
@@ -222,32 +222,41 @@ let newObj heap =
   let i = List.length !heap in
   Obj i ;;
 
-(* getVal: objects -> heap list ref -> tvalues                *)
+(* getVal: objects -> heap list -> tvalues                *)
 (* get the [objects] location in the heap and if the Field is *)
 (* Val, return the according tainted value.                   *)
-let getVal obj heap =
-  match List.nth !heap obj with
-    Val -> 
-  
+let getVal obj heap = 
+  match List.nth heap obj with
+    Heap lref -> 
+      ( match !lref with
+        [] -> raise (Fail "getVal: the list of field X Tva pairs is empty!")
+      | h :: t -> 
+          ( match h with
+            (fref, tva_ref) ->
+              ( match !fref with
+                Val -> !tva_ref
+              | _ -> raise (Fail "getVal: the request field is NOT val") )))
+  ;;
+      
 
 (* initialize a empty stack *)
 let stack_initialize () = ref ([] : stack) ;;
 
-(* lookup: string -> stack ref -> objects                     *)
+(* lookup: string -> stack -> objects                     *)
 (* lookup a variable in the stack and return the non-null     *)
 (* locations(objects) on the heap.                            *)
-let lookup x stack =
+let rec lookup x stack =
   let is_there s env =
     match env with
       Env(v, o) -> 
         ( match v with
-          V s -> if s = x then true then false ) in
+          V s -> if s = x then true else false ) in
   let obj env =
     match env with
       Env(_, o) -> o in
   
 (* lookup body starts from here *)
-  match !stack with
+  match stack with
     [] -> raise (Fail "lookup failed to find the variable")
   | h :: t ->
       ( match h with
@@ -319,9 +328,9 @@ let current conf =
 let eval expr stack heap =
   match expr with
     Number i -> Value(Int i)
-  | Var(x, _) -> 
+  (*| Var(x, _) -> 
       let loc = lookup x stack in
-      match heap
+      match heap *)
   | _ -> raise (Fail "to be implemented!")
   ;;
 
@@ -335,7 +344,7 @@ let rec interprete conf =
     Decl(var, cmd, _) -> 
       let l = newObj h in
       s := Declare( Env(V var, l) ) :: !s;
-      h := !h @ [Heap( l, Val, Value(Location(LocNull)) )];
+      h := !h @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
       ctrl := Block( (Cmd cmd) );
   | Vass(x, e, _) -> 
       ( match eval e !s !h with

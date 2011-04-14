@@ -226,16 +226,18 @@ let newObj heap =
 (* get the [objects] location in the heap and if the Field is *)
 (* Val, return the according tainted value.                   *)
 let getVal obj heap = 
-  match List.nth heap obj with
-    Heap lref -> 
-      ( match !lref with
-        [] -> raise (Fail "getVal: the list of field X Tva pairs is empty!")
-      | h :: t -> 
-          ( match h with
-            (fref, tva_ref) ->
-              ( match !fref with
-                Val -> !tva_ref
-              | _ -> raise (Fail "getVal: the request field is NOT val") )))
+  match obj with
+    Obj n ->
+      (match List.nth heap n with
+        Heap lref -> 
+          ( match !lref with
+            [] -> raise (Fail "getVal: the list of field X Tva pairs is empty!")
+          | h :: t -> 
+              ( match h with
+                (fref, tva_ref) ->
+                  ( match !fref with
+                    Val -> !tva_ref
+                  | _ -> raise (Fail "getVal: the request field is NOT val") ))))
   ;;
       
 
@@ -323,17 +325,114 @@ let current conf =
   | Final _ -> raise (Fail "The computation has been completed!")
   | ConfError -> raise (Fail "current: the computation got an error!")
   ;;
-        
-(* eval a expression with a given state *)
-let eval expr stack heap =
-  match expr with
-    Number i -> Value(Int i)
-  (*| Var(x, _) -> 
-      let loc = lookup x stack in
-      match heap *)
-  | _ -> raise (Fail "to be implemented!")
+
+(* is_exist : tvalues -> heap list -> bool *)
+(* Is there an l exist in loc(h) *)
+let is_exist tvl heap =
+  let lmax = List.length heap in
+  match tvl with
+    Value v -> 
+      ( match v with
+        Location l -> 
+          ( match l with
+            LocNull -> false
+          | Loc lc ->
+              ( match lc with
+                Obj i -> if i < lmax then true else false ) )
+      | _ -> raise (Fail "is_exist : the tvalue should be an locations") )
+  | _ -> raise (Fail "is_exist : the tvalue should not be TvError in this function")
   ;;
 
+(* is_field : tvalues -> bool *)
+let is_field tvl =
+  match tvl with
+    Value v ->
+      ( match v with
+        VField _ -> true
+      | _ -> false )
+  | _ -> false
+  ;;
+    
+(* dom_h : tvalues -> tvalues -> heap list -> tvalues *)
+(* dom_h returns true if there is an <l,f> belonging to dom(h) *)
+let dom_h l f heap =
+  let get_int_loc loc =
+    match loc with
+      Value v ->
+        ( match v with
+          Location lc ->
+            ( match lc with
+              Loc o ->
+                ( match o with
+                  Obj i -> i ) )
+        | _ -> raise (Fail "get_int_loc: the tvalues must be a location") )
+    | _ -> raise (Fail "get_int_loc: the tvalues must be a values") in
+  
+  let get_field tvf =
+    match tvf with
+      Value v -> 
+        ( match v with
+          VField f -> f
+        | _ -> raise (Fail "get_field: tvf must be a field") )
+    | _ -> raise (Fail "get_field: tvf must be a value") in
+
+  let rec get_value f list =
+    match list with
+      [] -> Value(Location(LocNull))
+    | h :: t -> 
+       ( match h with 
+         (fr, tr) -> if f = !fr then !tr else get_value f t ) in
+  
+  (* the main function begins from here *)
+  let n = get_int_loc l in
+  let field = get_field f in
+  match List.nth heap n with
+    Heap lref -> get_value field !lref ;;
+
+(* in_dom_h : tvalues -> bool *)
+let in_dom_h v =
+  match v with
+    Value v ->
+      ( match v with
+        Location lc ->
+          ( match lc with
+            LocNull -> false
+          | _ -> true )
+      | _ -> raise (Fail "in_dom_h: v must be a Location") )
+  | _ -> raise (Fail "in_dom_h: v must be a value")
+  ;;
+
+(* eval : aexpr -> stack -> heap list -> tvalues *)     
+(* evaluate a expression with a given state *)
+
+let rec eval expr stack heap =
+  match expr with
+    Field f -> Value(VField(F f))
+  | Number i -> Value(Int i)
+  | Var(x, _) -> 
+      let loc = lookup x stack in
+      getVal loc heap
+  | Minus(e1, e2, _) -> 
+      let tv1 = eval e1 stack heap in
+      let tv2 = eval e2 stack heap in
+      ( match tv1, tv2 with
+        Value v1, Value v2 -> 
+          ( match v1, v2 with
+            Int i1, Int i2 -> Value(Int (i1 - i2))
+          | _, _ -> TvError )
+      | _, _ -> TvError )
+  | Null -> Value(Location LocNull)
+  | Floc(e1, e2, _) -> 
+      let l = eval e1 stack heap in
+      let f = eval e2 stack heap in
+      ( match (is_exist l heap) && (is_field f) with
+        true ->
+          let vl = dom_h l f heap in
+          if in_dom_h vl then vl else TvError
+      | _ -> TvError )
+  | Proc(s, cmd, _) -> Value( Clo( Closure( V s, cmd, stack) ) )
+  ;;
+        
 (* the interior interprete procedure *)
 let rec interprete conf = 
   let c = current conf in

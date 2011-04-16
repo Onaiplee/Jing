@@ -26,6 +26,7 @@ type acmd =
   | If of abool * acmd * acmd * vattr
   | Para of acmd * acmd * vattr
   | Atom of acmd * vattr
+  | Block of acmd
 
 and aexpr =
     Field of string
@@ -445,10 +446,16 @@ let rec interprete conf =
       s := Declare( Env(V var, l) ) :: !s;
       h := !h @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
       ctrl := Block( (Cmd cmd) );
-  | Vass(x, e, _) -> 
+      conf;
+ (* | Vass(x, e, _) -> 
       ( match eval e !s !h with
-        TvError -> ();
-      | Value v -> (); )
+        TvError -> raise (Fail "Runtime Error")
+      | v -> ctrl := *)
+ (* | Fass(e1, e2, e3, _) -> 
+      let l = eval e1 !s !h in
+      let f = eval e2 !s !h in
+      if (not (is_exist l heap)) or (not (is_field f)) or (not (in_dom l f))
+          then Tv *)
   | _ -> raise (Fail "interprete: to be implemented!")
   ;;
 

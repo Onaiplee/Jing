@@ -27,6 +27,7 @@ type acmd =
   | Para of acmd * acmd * vattr
   | Atom of acmd * vattr
   | Block of acmd
+  | Empty
 
 and aexpr =
     Field of string
@@ -148,36 +149,46 @@ let print_result root =
 
 (* Definition of semantics domain *)
 
+(* boolean definition *)
 type booleans = 
     BoolTrue
   | BoolFalse
   | BoolError
   ;;
 
+(* object definition *)
 type objects = Obj of int;;
 
+(* location definition *)
 type locations =
     Loc of objects
   | LocNull
   ;;
+
+(* variable definition *)
 type var = V of string ;;
 
+(* Environment definition *)
 type env = Env of var * objects;;
 
+(* frame and stack definitions *)
 type frame = 
     Declare of env
   | Call of env * stack
 and stack =
     frame list
   ;;
-
+(* closure definition *)
 type closures = Closure of var * acmd * stack;;
 
+(* field definitions, the Val should have belonged to Field, *)
+(* use seperate definition to make program easier. *)
 type field = 
     F of string
   | Val
   ;;
 
+(* value definition *)
 type values =
     VField of field
   | Int of int
@@ -185,23 +196,23 @@ type values =
   | Clo of closures
   ;;
 
+(* tainted value definition *)
 type tvalues =
     Value of values
   | TvError
   ;;
 
+(* heap entry definitions, the heap will be a list of entries *)
 type heap = Heap of (field ref * tvalues ref) list ref;;
 
+(* state, <s, h> definition *)
 type states = State of stack ref * heap list ref ;;
 
-type ctrl =
-    Cmd of acmd
-  | Block of ctrl
-  ;;
+(* the control definition *)
 
+(* configuration definition *)
 type configurations =
-    Conf of ctrl ref * states ref
-  | Final of states ref
+    Conf of acmd * states ref
   | ConfError
   ;;
 
@@ -288,6 +299,7 @@ let conf_initialize prog =
   let state = state_initialize () in
   ref ( Conf(prog, state) ) ;;
 
+(* configurations ref *)
 (* decomposite the heap from current configuration *)
 let getHeap conf =
   match !conf with
@@ -433,36 +445,62 @@ let rec eval expr stack heap =
       | _ -> TvError )
   | Proc(s, cmd, _) -> Value( Clo( Closure( V s, cmd, stack) ) )
   ;;
-        
+
+(* set_heap : objects -> field -> values -> heap -> unit *)
+(* this function implement h[<l, f> -> values] *)
+let set_heap l f v heap =
+  
+
+(* acmd -> state -> acmd *)        
 (* the interior interprete procedure *)
-let rec interprete conf = 
-  let c = current conf in
-  let s = getStack conf in
-  let h = getHeap conf in
-  let ctrl = getCtrl conf in
-  match c with
-    Decl(var, cmd, _) -> 
+let rec run strl state = 
+  let stack = getStack conf in
+  let heap = getHeap conf in
+  match ctrl with
+    Empty -> Empty
+  | Block cmd -> 
+      let next = run cmd state in
+      ( match next with
+        Empty -> 
+          ( match !stack with
+            [] -> raise (Fail "no decl matched with a block, stack empty")`
+          | h :: t -> 
+              ( match h with
+                Decl _ -> pop stack
+              | _ -> raise (Fail "no decl matched with a block") ) )
+      | c -> Block c )
+  | Decl(var, cmd, _) -> 
       let l = newObj h in
       s := Declare( Env(V var, l) ) :: !s;
       h := !h @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
-      ctrl := Block( (Cmd cmd) );
-      conf;
- (* | Vass(x, e, _) -> 
+      Block cmd
+  | Vass(x, e, _) -> 
       ( match eval e !s !h with
-        TvError -> raise (Fail "Runtime Error")
-      | v -> ctrl := *)
- (* | Fass(e1, e2, e3, _) -> 
-      let l = eval e1 !s !h in
-      let f = eval e2 !s !h in
-      if (not (is_exist l heap)) or (not (is_field f)) or (not (in_dom l f))
-          then Tv *)
+        TvError -> raise (Fail "runtime error")
+      | Value v -> 
+          
+          Empty
+  | Fass(e1, e2, e3, _) ->
+  | Doa(s, _) ->
+  | Rpc(e1, e2, _) ->
+  | Skip ->
+  | Sq(c1, c2, _) ->
+  | While(b, c, _) ->
+  | If (b, c1, c2) ->
   | _ -> raise (Fail "interprete: to be implemented!")
+  ;;
+
+let interpreter conf = 
+  let next_conf = run conf in
+  match conf with
+    Final _ -> ();
+  | c -> run c
   ;;
 
 (* the miniOO interpreter *)
 let interpreter prog =
   let init_conf = conf_initialize prog in
-  interprete init_conf ;;
+  interpreter prog;;
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN

@@ -447,8 +447,13 @@ let rec eval expr stack heap =
   ;;
 
 (* set_heap : objects -> field -> values -> heap -> unit *)
-(* this function implement h[<l, f> -> values] *)
-let set_heap l f v heap =
+(* this function implement h[<l, val> -> values] *)
+let set_heap loc field va heap =
+  let entry = List.nth heap n in
+  match entry with
+    Heap mapl -> 
+      ( match !mapl with
+        h :: t -> if field = Val then h := (Val, va) else 
   
 
 (* acmd -> state -> acmd *)        

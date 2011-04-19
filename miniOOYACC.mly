@@ -449,11 +449,18 @@ let rec eval expr stack heap =
 (* set_heap : objects -> field -> values -> heap -> unit *)
 (* this function implement h[<l, val> -> values] *)
 let set_heap loc field va heap =
+  let set_map f v ml =
+    match !ml with
+      h :: t -> if h = f then h := (field, va) else set_map f v t
+    | [] -> (f
   let entry = List.nth heap n in
   match entry with
     Heap mapl -> 
       ( match !mapl with
-        h :: t -> if field = Val then h := (Val, va) else 
+        h :: t -> if field = h then h := (field, va) else mapl := ((field, va) :: !mapl )
+      | [] -> if field != Val then mapl := ((field, va) :: !mapl) else
+        raise (Fail "malloced loc used to set val field") )
+  ;;
   
 
 (* acmd -> state -> acmd *)        
@@ -468,11 +475,11 @@ let rec run strl state =
       ( match next with
         Empty -> 
           ( match !stack with
-            [] -> raise (Fail "no decl matched with a block, stack empty")`
+            [] -> raise (Fail "runtime error: no decl matched with a block, stack empty")`
           | h :: t -> 
               ( match h with
                 Decl _ -> pop stack
-              | _ -> raise (Fail "no decl matched with a block") ) )
+              | _ -> raise (Fail "runtime error: no decl matched with a block") ) )
       | c -> Block c )
   | Decl(var, cmd, _) -> 
       let l = newObj h in
@@ -483,8 +490,8 @@ let rec run strl state =
       ( match eval e !s !h with
         TvError -> raise (Fail "runtime error")
       | Value v -> 
-          
-          Empty
+          let l = lookup x !s in
+          set_heap l Val (Value v) h )
   | Fass(e1, e2, e3, _) ->
   | Doa(s, _) ->
   | Rpc(e1, e2, _) ->

@@ -436,7 +436,7 @@ let rec eval expr stack heap =
 
 (* set_heap : objects -> field -> values -> heap -> unit *)
 (* this function implement h[<l, f> -> values] *)
-let set_heap loc field va heap =
+let set_heap obj field va heap =
   let set_map f v ml =
     match !ml with
       h :: t -> 
@@ -444,9 +444,12 @@ let set_heap loc field va heap =
           (rf, rv) -> if !rf = f then rv := v else set_map f v t )
     | [] -> ml := [ (ref f, ref v) ] in
   
-  let entry = List.nth !heap n in
-  match entry with
-    Heap mapl -> set_map field va mapl
+  match obj with
+    Obj n ->
+      let entry = List.nth !heap n in
+      ( match entry with
+        Heap mapl -> set_map field va mapl )
+  ;;
   
 
 (* acmd -> state -> acmd *)        
@@ -464,7 +467,12 @@ let rec run strl state =
             [] -> raise (Fail "runtime error: no decl matched with a block, stack empty")`
           | h :: t -> 
               ( match h with
-                Decl _ -> pop stack
+                Decl _ -> 
+                  pop stack;
+                  Empty
+              | Call(_, s) ->
+                  stack := s;
+                  Empty
               | _ -> raise (Fail "runtime error: no decl matched with a block") ) )
       | c -> Block c )
   | Decl(var, cmd, _) -> 
@@ -497,13 +505,27 @@ let rec run strl state =
       set_heap l Val vloc heap;
       Empty
   | Rpc(e1, e2, _) -> 
+      let v = eval e1 !stack !heap in
+      match v with
+        Value va ->
+          ( match va with
+            Clo clo -> 
+              ( match clo with
+                Closure (var, c, s) ->
+                  let obj = newObj heap in
+                  let newStack = Call(Env(var, obj), !stack) :: s in
+                  let va = eval e2 !stack !heap in
+                  set_heap obj Val va heap;
+                  stack := newStack;
+                  Block c )
+          | _ -> raise (Fail "runtime error") )
   | Skip -> Empty
   | Sq(c1, c2, ph) -> 
       let next = run c1 state in
       ( match next with
         Empty -> c2
       | c -> Sq(c, c2, ph) )
-  | While(b, c, _) ->
+  | While(b, c, _) -> 
   | If (b, c1, c2) ->
   | _ -> raise (Fail "interprete: to be implemented!")
   ;;

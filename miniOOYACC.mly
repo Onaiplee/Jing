@@ -327,18 +327,6 @@ let getCtrl conf =
   | ConfError -> raise (Fail "getCtrl: the state is Error!")
   ;;
 
-(* decomposite the current cmd from the configuration *)
-let current conf =
-  let rec dec c =
-    match c with
-      Cmd cmd -> cmd
-    | Block ctrl -> dec ctrl in
-  match !conf with
-    Conf(ctrl, _) -> dec !ctrl
-  | Final _ -> raise (Fail "The computation has been completed!")
-  | ConfError -> raise (Fail "current: the computation got an error!")
-  ;;
-
 (* is_exist : tvalues -> heap list -> bool *)
 (* Is there an l exist in loc(h) *)
 let is_exist tvl heap =
@@ -447,20 +435,18 @@ let rec eval expr stack heap =
   ;;
 
 (* set_heap : objects -> field -> values -> heap -> unit *)
-(* this function implement h[<l, val> -> values] *)
+(* this function implement h[<l, f> -> values] *)
 let set_heap loc field va heap =
   let set_map f v ml =
     match !ml with
-      h :: t -> if h = f then h := (field, va) else set_map f v t
-    | [] -> (f
-  let entry = List.nth heap n in
+      h :: t -> 
+        ( match h with
+          (rf, rv) -> if !rf = f then rv := v else set_map f v t )
+    | [] -> ml := [ (ref f, ref v) ] in
+  
+  let entry = List.nth !heap n in
   match entry with
-    Heap mapl -> 
-      ( match !mapl with
-        h :: t -> if field = h then h := (field, va) else mapl := ((field, va) :: !mapl )
-      | [] -> if field != Val then mapl := ((field, va) :: !mapl) else
-        raise (Fail "malloced loc used to set val field") )
-  ;;
+    Heap mapl -> set_map field va mapl
   
 
 (* acmd -> state -> acmd *)        
@@ -483,20 +469,40 @@ let rec run strl state =
       | c -> Block c )
   | Decl(var, cmd, _) -> 
       let l = newObj h in
-      s := Declare( Env(V var, l) ) :: !s;
-      h := !h @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
+      stack := Declare( Env(V var, l) ) :: !stack;
+      heap := !heap @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
       Block cmd
   | Vass(x, e, _) -> 
-      ( match eval e !s !h with
-        TvError -> raise (Fail "runtime error")
-      | Value v -> 
-          let l = lookup x !s in
-          set_heap l Val (Value v) h )
+      let v = eval e !stack !heap in
+      if v = TvError 
+      then 
+        raise (Fail "runtime error") 
+      else 
+        let l = lookup x !stack in
+        set_heap l Val v heap 
   | Fass(e1, e2, e3, _) ->
-  | Doa(s, _) ->
-  | Rpc(e1, e2, _) ->
-  | Skip ->
-  | Sq(c1, c2, _) ->
+      let l = eval e1 !stack !heap in
+      let f = eval e2 !stack !heap in
+      if (not (loc l)) or (not (is_field f)) or (not (<l, f> in_dom))
+      then raise (Fail"runtime error")
+      else
+        let v = eval e3 !stack !heap in
+        set_heap l f v heap;
+        Empty
+  | Doa(x, _) -> 
+      let o = newObj heap in
+      let vloc = Value(Location(Loc o)) in
+      let l = lookup x !stack in
+      heap := !heap @ [Heap (ref [])];
+      set_heap l Val vloc heap;
+      Empty
+  | Rpc(e1, e2, _) -> 
+  | Skip -> Empty
+  | Sq(c1, c2, ph) -> 
+      let next = run c1 state in
+      ( match next with
+        Empty -> c2
+      | c -> Sq(c, c2, ph) )
   | While(b, c, _) ->
   | If (b, c1, c2) ->
   | _ -> raise (Fail "interprete: to be implemented!")

@@ -385,8 +385,9 @@ let s_dump indent stack =
       [] -> ();
     | h :: t -> 
         make_indent indent;
+        print_string "stack[";
         print_string (string_of_int count);
-        print_string " ";
+        print_string "] ";
         print_frame indent h;
         print_newline ();
         print_stack indent (count + 1) t 
@@ -399,7 +400,7 @@ let s_dump indent stack =
         print_string "Call ";
         print_env env; 
         print_newline ();
-        print_stack (indent + 4) 0 stack in
+        print_stack (indent + 9) 0 stack in
   
 (* stack_dump body starts from here *)
   print_stack indent 0 stack ;;
@@ -438,9 +439,13 @@ let heap_dump heap =
             print_string "clo< ";
             print_var var;
             print_string ", ";
+            print_newline ();
+            print_string "              ";
             print_ctrl ctrl;
-            s_dump 11 stack;
-            print_string " >" in
+            print_string ",";
+            print_newline ();
+            s_dump 14 stack;
+            print_string "         >" in
       
       match tva with
         TvError -> print_string "error"
@@ -468,9 +473,9 @@ let heap_dump heap =
     | h :: t -> 
         ( match h with
           Heap fvlist_ref -> 
-            print_string "==== ";
+            print_string "heap[";
             print_string (string_of_int count);
-            print_string " ====";
+            print_string "]";
             print_newline ();
             print_map !fvlist_ref;
             print_heap (count + 1) t ) in
@@ -753,7 +758,18 @@ let rec run ctrl stack heap =
   let next_strl = step ctrl stack heap in
   match next_strl with
     Empty _ -> print_string "program ends"; print_newline (); stack_dump !stack; heap_dump !heap
-  | c -> print_ctrl c; stack_dump !stack; heap_dump !heap; run c stack heap
+  | c ->
+      print_newline ();
+      print_string " => ";
+      print_ctrl c; 
+      print_newline ();
+      print_string "******************** stack dump ********************";
+      print_newline ();
+      stack_dump !stack;
+      print_string "******************** heap  dump ********************";
+      print_newline ();
+      heap_dump !heap; 
+      run c stack heap
   ;;
 
 (* the miniOO interpreter *)

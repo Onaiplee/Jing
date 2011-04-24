@@ -72,6 +72,7 @@ let rec setc v node =
   | If(b, c1, c2, _) -> If(setb v b, setc v c1, setc v c2, v)
   | Para(c1, c2, _) -> Para(setc v c1, setc v c2, v)
   | Atom (c, _) -> Atom(setc v c, v)
+  | _ -> raise (Fail "setc: invalid pattern in static check stage")
 and sete v node =
   match node with
     Field s -> Field s
@@ -117,6 +118,7 @@ let rec getc node =
   | If(b, c1, c2, _) -> getb b or getc c1 or getc c2
   | Para(c1, c2, _) -> getc c1 or getc c2
   | Atom (c, _) -> getc c
+  | _ -> raise (Fail "getc: invalid pattern in static check stage")
 and gete node =
   match node with
     Field _ -> false
@@ -145,7 +147,120 @@ let print_result root =
   let result = static_check root in
   if result then print_string "Error" else print_string "Correct" ;;
 
-(* Transitional Semantics Part *)
+(* print_ctrl : acmd -> unit *)
+let rec print_ctrl cmd =
+  match cmd with
+    Decl(s, c, _) -> 
+      print_string "var ";
+      print_string s;
+      print_string "; ";
+      print_ctrl c;
+  | Rpc(e1, e2, _) ->
+      print_expr e1;
+      print_string "(";
+      print_expr e2;
+      print_string ")"
+  | Doa(s, _) ->
+      print_string "malloc(";
+      print_string s;
+      print_string ")"
+  | Vass(s, e, _) ->
+      print_string s;
+      print_string " = ";
+      print_expr e;
+  | Fass(e1, e2, e3, _) ->
+      print_expr e1;
+      print_string ".";
+      print_expr e2;
+      print_string " = ";
+      print_expr e3
+  | Skip ->
+      print_string "skip"
+  | Sq(c1, c2, _) ->
+      print_string "{";
+      print_ctrl c1;
+      print_string "; ";
+      print_ctrl c2;
+      print_string "}"
+  | While(b, c, _) ->
+      print_string "while ";
+      print_bool b;
+      print_string " then ";
+      print_ctrl c;
+  | If(b, c1, c2, _) ->
+      print_string "if ";
+      print_bool b;
+      print_string " then ";
+      print_ctrl c1;
+      print_string " else ";
+      print_ctrl c2;
+  | Para(c1, c2, _) ->
+      print_string "{ ";
+      print_ctrl c1;
+      print_string " ||| ";
+      print_ctrl c2;
+      print_string " }"
+  | Atom(c, _) ->
+      print_string "atom(";
+      print_ctrl c;
+      print_string ")"
+  | Block c ->
+      print_string "<block(";
+      print_ctrl c;
+      print_string ")>"
+  | Empty -> ()
+and print_expr expr =
+  match expr with
+    Field s -> 
+      print_string s
+  | Number i ->
+      print_string (string_of_int i)
+  | Var(s, _) ->
+      print_string s
+  | Null -> 
+      print_string "null"
+  | Minus(e1, e2, _) ->
+      print_expr e1;
+      print_string " - ";
+      print_expr e2
+  | Floc(e1, e2, _) ->
+      print_expr e1;
+      print_string ".";
+      print_expr e2
+  | Proc(s, c, _) ->
+      print_string "proc ";
+      print_string s;
+      print_string ":";
+      print_ctrl c;
+and print_bool bool =
+  match bool with
+    True -> 
+      print_string "true"
+  | False ->
+      print_string "false"
+  | Eq(e1, e2, _) ->
+      print_expr e1;
+      print_string " == ";
+      print_expr e2
+  | Lt(e1, e2, _) ->
+      print_expr e1;
+      print_string " < ";
+      print_expr e2
+  ;;
+      
+    
+
+(* make_indent : int -> unit *)
+let rec make_indent indent =
+  match indent with
+    0 -> ();
+  | i when i < 0 -> raise (Fail "make_indent: the indent cannot be negtive!")
+  | _ -> 
+      print_string " ";
+      make_indent (indent - 1)
+  ;;
+
+(* ============== Transitional Semantics Part ================*)
 
 (* Definition of semantics domain *)
 
@@ -205,22 +320,11 @@ type tvalues =
 (* heap entry definitions, the heap will be a list of entries *)
 type heap = Heap of (field ref * tvalues ref) list ref;;
 
-(* state, <s, h> definition *)
-type states = State of stack ref * heap list ref ;;
-
-(* the control definition *)
-
-(* configuration definition *)
-type configurations =
-    Conf of acmd * states ref
-  | ConfError
-  ;;
-
-(* definitions of operations and type decomposition functions *)
+(* ================ definitions of operations =============== *)
 
 
 (* heap_initialize: unit -> heap list ref                     *)
-(* initialize a empty heap.                                   *)
+(* initialize a empty heap                                    *)
 let heap_initialize () = ref ([] : heap list);;
 
 (* newObj: heap list ref -> int                               *)
@@ -229,16 +333,15 @@ let heap_initialize () = ref ([] : heap list);;
 (* dirty locations will not be reclaimed. So an available     *)
 (* location will be always the next location, i.e., length of *)
 (* the heap.                                                  *)
-
 let newObj heap = 
   let i = List.length !heap in
   Obj i ;;
 
-(* getVal: objects -> heap list -> tvalues                *)
+(* getVal: objects -> heap list -> tvalues                    *)
 (* get the [objects] location in the heap and if the Field is *)
 (* Val, return the according tainted value.                   *)
 let getVal obj heap = 
-  match obj with
+   match obj with
     Obj n ->
       (match List.nth heap n with
         Heap lref -> 
@@ -252,9 +355,128 @@ let getVal obj heap =
                   | _ -> raise (Fail "getVal: the request field is NOT val") ))))
   ;;
       
-
 (* initialize a empty stack *)
 let stack_initialize () = ref ([] : stack) ;;
+
+(* push a new frame on top of the stack *)
+let push s frame = s := frame :: !s ;;
+
+(* pop a most recently frame from stack *)
+let pop s =
+  match !s with
+    [] -> raise (Fail "The stack empty!")
+  | h :: t -> s := t
+  ;;
+
+(* dump the stack content for debuging *)
+(* s_dump : stack -> unit *)
+let s_dump indent stack =
+  let print_env env =
+      match env with
+        Env (var, obj) ->
+          ( match var, obj with
+            V s, Obj i -> 
+              print_string s;
+              print_string " -> ";
+              print_string (string_of_int i) ) in
+  
+  let rec print_stack indent count stack =
+    match stack with
+      [] -> ();
+    | h :: t -> 
+        make_indent indent;
+        print_string (string_of_int count);
+        print_string " ";
+        print_frame indent h;
+        print_newline ();
+        print_stack indent (count + 1) t 
+  and print_frame indent frame =
+    match frame with
+      Declare env ->
+        print_string "Decl ";
+        print_env env;
+    | Call (env, stack) -> 
+        print_string "Call ";
+        print_env env; 
+        print_newline ();
+        print_stack (indent + 4) 0 stack in
+  
+(* stack_dump body starts from here *)
+  print_stack indent 0 stack ;;
+
+(* stack_dump: stack -> unit *)
+let stack_dump stack = s_dump 0 stack ;;
+
+(* heap_dump : heap list -> unit *)
+(* dump the heap for debugging *)
+let heap_dump heap =
+  let rec print_map mlist =
+    let print_field f =
+      match f with
+        Val -> print_string "val"
+      | F s -> 
+          print_string s;
+          print_string "  " in
+    
+    let print_tvalue tva = 
+      let print_location l =
+        match l with
+          LocNull -> print_string "null"
+        | Loc o ->
+            ( match o with
+              Obj i -> 
+                print_string "heap[";
+                print_string (string_of_int i);
+                print_string "]" ) in
+      let print_closure clo =
+        let print_var var =
+          match var with
+            V s -> print_string s in
+        
+        match clo with
+          Closure (var, ctrl, stack) ->
+            print_string "clo< ";
+            print_var var;
+            print_string ", ";
+            print_ctrl ctrl;
+            s_dump 11 stack;
+            print_string " >" in
+      
+      match tva with
+        TvError -> print_string "error"
+      | Value v -> 
+          ( match v with
+            VField f -> print_field f
+          | Int i -> print_string (string_of_int i)
+          | Location l -> print_location l
+          | Clo clo -> print_closure clo ) in
+    
+    match mlist with
+      [] -> ()
+    | h :: t -> 
+        ( match h with
+          (rf, rtva) -> 
+            print_field !rf;
+            print_string "  ->  ";
+            print_tvalue !rtva;
+            print_newline ();
+            print_map t ) in
+  
+  let rec print_heap count hlist =
+    match hlist with
+      [] -> ()
+    | h :: t -> 
+        ( match h with
+          Heap fvlist_ref -> 
+            print_string "==== ";
+            print_string (string_of_int count);
+            print_string " ====";
+            print_newline ();
+            print_map !fvlist_ref;
+            print_heap (count + 1) t ) in
+  
+  (* heap_dump body begins from here *)
+  print_heap 0 heap ;;
 
 (* lookup: string -> stack -> objects                     *)
 (* lookup a variable in the stack and return the non-null     *)
@@ -275,61 +497,12 @@ let rec lookup x stack =
   | h :: t ->
       ( match h with
         Declare env -> if is_there x env then obj env else lookup x t
-      | _ -> lookup x t )
+      | Call(env, _) -> if is_there x env then obj env else lookup x t )
   ;;
 
-(* push a new frame on top of the stack *)
-let push s frame = s := frame :: !s ;;
-
-(* pop a most recently frame from stack *)
-let pop s =
-  match !s with
-    [] -> raise (Fail "The stack empty!")
-  | h :: t -> s := t
-  ;;
-
-(* initialize a state *)
-let state_initialize () =
-  let s = stack_initialize () in
-  let h = heap_initialize () in
-  ref ( State(s, h) ) ;;
-
-(* initialize a configurations of the program *)
-let conf_initialize prog =
-  let state = state_initialize () in
-  ref ( Conf(prog, state) ) ;;
-
-(* configurations ref *)
-(* decomposite the heap from current configuration *)
-let getHeap conf =
-  match !conf with
-    Conf(_, s) -> 
-      ( match !s with
-        State(_, h) -> h ) 
-  | Final s -> raise (Fail "getHeap: the computation has been completed!")
-  | ConfError -> raise (Fail "getHeap: the state is Error!")
-  ;;
-
-(* decomposite the stack from current configuration *)
-let getStack conf =
-  match !conf with
-    Conf(_, s) -> 
-      ( match !s with
-        State(s, _) -> s ) 
-  | Final s -> raise (Fail "getStack: the computation has been completed!")
-  | ConfError -> raise (Fail "getStack: the state is Error!")
-  ;;
-(* decomposite the Ctrl from current configuration *)
-let getCtrl conf =
-  match !conf with
-    Conf(c, _) -> c
-  | Final _ -> raise (Fail "getCtrl: the computation has been completed!")
-  | ConfError -> raise (Fail "getCtrl: the state is Error!")
-  ;;
-
-(* is_exist : tvalues -> heap list -> bool *)
+(* in_loc : tvalues -> heap list -> bool *)
 (* Is there an l exist in loc(h) *)
-let is_exist tvl heap =
+let in_loc tvl heap =
   let lmax = List.length heap in
   match tvl with
     Value v -> 
@@ -353,10 +526,19 @@ let is_field tvl =
       | _ -> false )
   | _ -> false
   ;;
-    
-(* dom_h : tvalues -> tvalues -> heap list -> tvalues *)
-(* dom_h returns true if there is an <l,f> belonging to dom(h) *)
-let dom_h l f heap =
+
+let get_field tvf =
+  match tvf with
+    Value v -> 
+      ( match v with
+        VField f -> f
+      | _ -> raise (Fail "get_field: tvf must be a field") )
+  | _ -> raise (Fail "get_field: tvf must be a value")
+  ;;
+
+(* in_dom_h : tvalues -> tvalues -> heap list -> tvalues *)
+(* in_dom_h returns true if there is an <l,f> belonging to dom(h) *)
+let in_dom_h l f heap =
   let get_int_loc loc =
     match loc with
       Value v ->
@@ -365,43 +547,29 @@ let dom_h l f heap =
             ( match lc with
               Loc o ->
                 ( match o with
-                  Obj i -> i ) )
+                  Obj i -> i ) 
+            | LocNull -> raise (Fail "get_int_loc: the location cannot be locNull" ) )
         | _ -> raise (Fail "get_int_loc: the tvalues must be a location") )
     | _ -> raise (Fail "get_int_loc: the tvalues must be a values") in
   
-  let get_field tvf =
-    match tvf with
-      Value v -> 
-        ( match v with
-          VField f -> f
-        | _ -> raise (Fail "get_field: tvf must be a field") )
-    | _ -> raise (Fail "get_field: tvf must be a value") in
-
-  let rec get_value f list =
-    match list with
-      [] -> Value(Location(LocNull))
-    | h :: t -> 
-       ( match h with 
-         (fr, tr) -> if f = !fr then !tr else get_value f t ) in
+ 
   
   (* the main function begins from here *)
   let n = get_int_loc l in
   let field = get_field f in
-  match List.nth heap n with
-    Heap lref -> get_value field !lref ;;
-
-(* in_dom_h : tvalues -> bool *)
-let in_dom_h v =
-  match v with
-    Value v ->
-      ( match v with
-        Location lc ->
-          ( match lc with
-            LocNull -> false
-          | _ -> true )
-      | _ -> raise (Fail "in_dom_h: v must be a Location") )
-  | _ -> raise (Fail "in_dom_h: v must be a value")
-  ;;
+  let lmax = List.length heap in
+  if n >= lmax then false 
+  else
+    match List.nth heap n with
+      Heap lref -> 
+        ( match !lref with
+          [] -> true
+        | h :: t -> 
+            ( match h with 
+              (rf, tva) -> 
+                if field = Val && !rf != Val then false else true ) )
+                  
+    ;;
 
 (* eval : aexpr -> stack -> heap list -> tvalues *)     
 (* evaluate a expression with a given state *)
@@ -426,48 +594,76 @@ let rec eval expr stack heap =
   | Floc(e1, e2, _) -> 
       let l = eval e1 stack heap in
       let f = eval e2 stack heap in
-      ( match (is_exist l heap) && (is_field f) with
-        true ->
-          let vl = dom_h l f heap in
-          if in_dom_h vl then vl else TvError
-      | _ -> TvError )
+      ( match (in_loc l heap) && (is_field f) && (in_dom_h l f heap) with
+      | false -> TvError
+      | true -> TvError  )
   | Proc(s, cmd, _) -> Value( Clo( Closure( V s, cmd, stack) ) )
   ;;
 
+(* evalb : abool -> stack -> heap list -> booleans *)
+(* evaluate a bool expression with a given state *)
+let evalb expr stack heap =
+  match expr with
+    True -> BoolTrue
+  | False -> BoolFalse
+  | Eq(e1, e2, _) ->
+      let tv1 = eval e1 stack heap in
+      let tv2 = eval e2 stack heap in
+      ( match tv1, tv2 with
+        TvError, _ -> BoolError
+      | _, TvError -> BoolError
+      | Value v1, Value v2 ->
+          ( match v1, v2 with
+            Int _, Int _ -> if v1 = v2 then BoolTrue else BoolError
+          | Location _, Location _ -> if v1 = v2 then BoolTrue else BoolError
+          | Clo _, Clo _ -> if v1 = v2 then BoolTrue else BoolError
+          | _, _ -> BoolError ) )
+  | Lt(e1, e2, _) ->
+      let tv1 = eval e1 stack heap in
+      let tv2 = eval e2 stack heap in
+      ( match tv1, tv2 with
+        TvError, _ -> BoolError
+      | _, TvError -> BoolError
+      | Value v1, Value v2 ->
+          ( match v1, v2 with
+            Int i1, Int i2 -> if i1 < i2 then BoolTrue else BoolFalse
+          | _, _ -> BoolError ) )
+  ;;
+    
 (* set_heap : objects -> field -> values -> heap -> unit *)
 (* this function implement h[<l, f> -> values] *)
 let set_heap obj field va heap =
-  let set_map f v ml =
-    match !ml with
+  let rec set_map f v ml =
+    match ml with
       h :: t -> 
         ( match h with
-          (rf, rv) -> if !rf = f then rv := v else set_map f v t )
-    | [] -> ml := [ (ref f, ref v) ] in
-  
+          (rf, rv) -> if !rf = f then begin rv := v; true end else set_map f v t )
+    | [] -> false in
   match obj with
     Obj n ->
-      let entry = List.nth !heap n in
-      ( match entry with
-        Heap mapl -> set_map field va mapl )
+      if n >= List.length !heap then raise (Fail "set_map: the obj exceeds the boundary") 
+      else
+        let entry = List.nth !heap n in
+        ( match entry with
+          Heap mapl -> 
+            if set_map field va !mapl then () else mapl := !mapl @ [(ref field, ref va)] )
   ;;
   
 
-(* acmd -> state -> acmd *)        
-(* the interior interprete procedure *)
-let rec run strl state = 
-  let stack = getStack conf in
-  let heap = getHeap conf in
+(* step : acmd -> stack ref -> heap list ref -> acmd *)        
+(* the interior step procedure *)
+let rec step ctrl stack heap = 
   match ctrl with
     Empty -> Empty
   | Block cmd -> 
-      let next = run cmd state in
+      let next = step cmd stack heap in
       ( match next with
         Empty -> 
           ( match !stack with
-            [] -> raise (Fail "runtime error: no decl matched with a block, stack empty")`
+            [] -> raise (Fail "runtime error: no decl matched with a block, stack empty")
           | h :: t -> 
               ( match h with
-                Decl _ -> 
+                Declare _ -> 
                   pop stack;
                   Empty
               | Call(_, s) ->
@@ -476,7 +672,7 @@ let rec run strl state =
               | _ -> raise (Fail "runtime error: no decl matched with a block") ) )
       | c -> Block c )
   | Decl(var, cmd, _) -> 
-      let l = newObj h in
+      let l = newObj heap in
       stack := Declare( Env(V var, l) ) :: !stack;
       heap := !heap @ [Heap( ref [ ( ref Val, ref (Value(Location(LocNull))) ) ] )];
       Block cmd
@@ -487,15 +683,27 @@ let rec run strl state =
         raise (Fail "runtime error") 
       else 
         let l = lookup x !stack in
-        set_heap l Val v heap 
+        set_heap l Val v heap;
+        Empty
   | Fass(e1, e2, e3, _) ->
       let l = eval e1 !stack !heap in
       let f = eval e2 !stack !heap in
-      if (not (loc l)) or (not (is_field f)) or (not (<l, f> in_dom))
+      if (not (in_loc l !heap)) or (not (is_field f)) or (not (in_dom_h l f !heap))
       then raise (Fail"runtime error")
       else
         let v = eval e3 !stack !heap in
-        set_heap l f v heap;
+        let obj = 
+          ( match l with
+            Value tv ->
+              ( match tv with
+                Location loc ->
+                  ( match loc with
+                    Loc o -> o 
+                  | _ -> raise (Fail "runtime error") )
+            | _ -> raise (Fail " runtime error") )
+          | _ -> raise (Fail "runtime error") ) in
+        let sf = get_field f in
+        set_heap obj sf v heap;
         Empty
   | Doa(x, _) -> 
       let o = newObj heap in
@@ -506,7 +714,7 @@ let rec run strl state =
       Empty
   | Rpc(e1, e2, _) -> 
       let v = eval e1 !stack !heap in
-      match v with
+      ( match v with
         Value va ->
           ( match va with
             Clo clo -> 
@@ -515,32 +723,45 @@ let rec run strl state =
                   let obj = newObj heap in
                   let newStack = Call(Env(var, obj), !stack) :: s in
                   let va = eval e2 !stack !heap in
+                  heap := !heap @ [Heap (ref [])];
                   set_heap obj Val va heap;
                   stack := newStack;
                   Block c )
           | _ -> raise (Fail "runtime error") )
+      | _ -> raise (Fail "runtime error") )
   | Skip -> Empty
   | Sq(c1, c2, ph) -> 
-      let next = run c1 state in
+      let next = step c1 stack heap in
       ( match next with
         Empty -> c2
       | c -> Sq(c, c2, ph) )
-  | While(b, c, _) -> 
-  | If (b, c1, c2) ->
+  | While(b, c, ph) -> 
+      ( match evalb b !stack !heap with
+        BoolTrue -> Sq(c, While(b, c, ph), ph)
+      | BoolFalse -> Empty
+      | BoolError -> raise (Fail "runtime error") )
+  | If (b, c1, c2, _) -> 
+      ( match evalb b !stack !heap with
+        BoolTrue -> c1
+      | BoolFalse -> c2
+      | BoolError -> raise (Fail "runtime error") )
   | _ -> raise (Fail "interprete: to be implemented!")
   ;;
 
-let interpreter conf = 
-  let next_conf = run conf in
-  match conf with
-    Final _ -> ();
-  | c -> run c
+(* The recursive run function *)
+let rec run ctrl stack heap =
+  let next_strl = step ctrl stack heap in
+  match next_strl with
+    Empty _ -> print_string "program ends"; print_newline (); stack_dump !stack; heap_dump !heap
+  | c -> print_ctrl c; stack_dump !stack; heap_dump !heap; run c stack heap
   ;;
 
 (* the miniOO interpreter *)
-let interpreter prog =
-  let init_conf = conf_initialize prog in
-  interpreter prog;;
+let interpreter prog = 
+  let stack = stack_initialize () in
+  let heap = heap_initialize () in
+  run prog stack heap ;;
+
 %}
 
 %token EQ COLON LT MINUS LCURLYB RCURLYB SEMICOLON ASSIGN PERIOD THEN
@@ -560,7 +781,7 @@ let interpreter prog =
 %%
 
 prog :
-  cmd EOL                             { print_result $1; print_newline() } 
+  cmd EOL                             { print_result $1; print_newline(); print_ctrl $1; print_newline (); interpreter $1} 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { Decl   ($2, $4, None)     }

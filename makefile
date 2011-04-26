@@ -26,8 +26,12 @@ all :
 	@echo '# parser and miniOO:'
 	ocamlc -o ${FILE} ${FILE}LEX.cmo ${FILE}YACC.cmo ${FILE}.cmo
 	ls
-	@echo '# of Using the miniOO:'
+	@echo '1st of Using the miniOO:'
 	echo "var P; {P = proc Y:if Y < 1 then P = 1 else P(Y - 1); P(1)}" | ./${FILE}
+	@echo '2nd of Using the miniOO:'
+	echo "var X; {malloc(X); {X.r = 1; var P; {P = proc Y:if Y < X.r then P = 1 else P(Y - 1); P(1)}}}" | ./${FILE}
+	@echo '3rd of Using the miniOO:'
+	echo "var X; {malloc(X); {X.c = 1 - 1; {X.f = proc Y:if Y < 1 then X.r = X.c else X.f(Y - 1); X.f(1)}}}" | ./${FILE}
 
 .PHONY : clean
 clean :

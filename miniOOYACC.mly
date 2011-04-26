@@ -145,7 +145,13 @@ let static_check root =
 
 let print_result root =
   let result = static_check root in
-  if result then print_string "Error" else print_string "Correct" ;;
+  print_newline ();
+  print_string "Starting Static Semantic Checking ...";
+  print_newline ();
+  if result then print_string "Static Semantic Error" else print_string "Static Semantic Checking Passed!";
+  print_newline ();
+  print_newline ()
+  ;;
 
 (* print_ctrl : acmd -> unit *)
 let rec print_ctrl cmd =
@@ -400,7 +406,7 @@ let s_dump indent stack =
         print_string "Call ";
         print_env env; 
         print_newline ();
-        print_stack (indent + 9) 0 stack in
+        print_stack (indent + 14) 0 stack in
   
 (* stack_dump body starts from here *)
   print_stack indent 0 stack ;;
@@ -576,6 +582,38 @@ let in_dom_h l f heap =
                   
     ;;
 
+(* get_heap : tvalue_loc -> tvalue_field -> heap -> values *)
+let get_heap location field heap =
+  let rec get_map f ml =
+    match ml with
+      h :: t ->
+        ( match h with
+          (rf, rv) -> if !rf = f then !rv else get_map f t )
+    | [] -> Value(Location(LocNull)) in
+  let f =
+    match field with
+      Value v ->
+        ( match v with
+          VField vf -> vf 
+        | _ -> raise (Fail "get_heap: runtime error") ) 
+    | _ -> raise (Fail "get_heap: runtime error") in
+  match location with
+    Value v ->
+      ( match v with
+        Location loc ->
+          ( match loc with
+            Loc l ->
+              ( match l with
+                Obj i ->
+                  let entry = List.nth heap i in
+                  ( match entry with
+                    Heap mapl -> get_map f !mapl )
+              | _ -> raise (Fail "get_heap: runtime error") )
+          | _ -> raise (Fail "get_heap: runtime error") )
+      | _ -> raise (Fail "get_heap: runtime error") )
+  | _ -> raise (Fail "get_heap: runtime error")
+  ;;
+
 (* eval : aexpr -> stack -> heap list -> tvalues *)     
 (* evaluate a expression with a given state *)
 
@@ -601,7 +639,7 @@ let rec eval expr stack heap =
       let f = eval e2 stack heap in
       ( match (in_loc l heap) && (is_field f) && (in_dom_h l f heap) with
       | false -> TvError
-      | true -> TvError  )
+      | true -> get_heap l f heap )
   | Proc(s, cmd, _) -> Value( Clo( Closure( V s, cmd, stack) ) )
   ;;
 
@@ -654,7 +692,6 @@ let set_heap obj field va heap =
             if set_map field va !mapl then () else mapl := !mapl @ [(ref field, ref va)] )
   ;;
   
-
 (* step : acmd -> stack ref -> heap list ref -> acmd *)        
 (* the interior step procedure *)
 let rec step ctrl stack heap = 
@@ -757,18 +794,37 @@ let rec step ctrl stack heap =
 let rec run ctrl stack heap =
   let next_strl = step ctrl stack heap in
   match next_strl with
-    Empty _ -> print_string "program ends"; print_newline (); stack_dump !stack; heap_dump !heap
-  | c ->
+    Empty _ -> 
       print_newline ();
-      print_string " => ";
-      print_ctrl c; 
-      print_newline ();
-      print_string "******************** stack dump ********************";
+      print_string "-------------------- Stack Dump --------------------"; 
       print_newline ();
       stack_dump !stack;
-      print_string "******************** heap  dump ********************";
+      print_string "-------------------- Heap  Dump --------------------";
       print_newline ();
-      heap_dump !heap; 
+      heap_dump !heap;
+      print_newline ();
+      print_string "==================== Next Step =====================";
+      print_newline ();
+      print_newline ();
+      print_string "=> Program Terminates"; 
+      print_newline ();
+      print_newline ();
+      print_newline ();
+  | c ->
+      print_newline ();
+      print_string "-------------------- Stack Dump --------------------";
+      print_newline ();
+      stack_dump !stack;
+      print_string "-------------------- Heap  Dump --------------------";
+      print_newline ();
+      heap_dump !heap;
+      print_newline ();
+      print_string "==================== Next Step =====================";
+      print_newline ();
+      print_newline ();
+      print_string "=> ";
+      print_ctrl c;
+      print_newline ();
       run c stack heap
   ;;
 
@@ -776,6 +832,12 @@ let rec run ctrl stack heap =
 let interpreter prog = 
   let stack = stack_initialize () in
   let heap = heap_initialize () in
+  print_string "================= Program Starts ===================";
+  print_newline ();
+  print_newline ();
+  print_string "=> ";
+  print_ctrl prog;
+  print_newline ();
   run prog stack heap ;;
 
 %}
@@ -797,7 +859,7 @@ let interpreter prog =
 %%
 
 prog :
-  cmd EOL                             { print_result $1; print_newline(); print_ctrl $1; print_newline (); interpreter $1} 
+  cmd EOL                             { print_result $1; interpreter $1} 
 
 cmd :
   VARIABLE VAR SEMICOLON cmd          { Decl   ($2, $4, None)     }

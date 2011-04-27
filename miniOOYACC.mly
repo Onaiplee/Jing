@@ -787,8 +787,31 @@ let rec step ctrl stack heap =
         BoolTrue -> c1
       | BoolFalse -> c2
       | BoolError -> raise (Fail "runtime error") )
-  | _ -> raise (Fail "interprete: to be implemented!")
+  | Para(c1, c2, v) ->
+      ( match Random.bool () with
+        true -> 
+          let next = step c1 stack heap in
+          ( match next with
+            Empty -> c2
+          | c -> Para(c, c2, v) )
+      | false ->
+          let next = step c2 stack heap in
+          ( match next with
+            Empty -> c1
+          | c -> Para(c1, c, v) ) )
+  | Atom(c1, _) ->
+      let next = atom_run c1 stack heap in
+      ( match next with
+        Empty -> Empty
+      | _ -> raise (Fail "Atom runtime error") ) 
+        
+and atom_run ctrl stack heap = 
+  let next = step ctrl stack heap in
+  match next with
+    Empty -> Empty
+  | c -> atom_run c stack heap
   ;;
+
 
 (* The recursive run function *)
 let rec run ctrl stack heap =
